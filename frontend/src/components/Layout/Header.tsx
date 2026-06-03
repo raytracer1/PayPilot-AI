@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import AuthModal from "../Auth/AuthModal";
-import { Sun, Moon, Zap, LogIn, User, LogOut, ChevronDown } from "lucide-react";
+import { Sun, Moon, Zap, LogIn, User, LogOut, ChevronDown, Plus } from "lucide-react";
 
 interface HeaderProps {
   onNewQuote: () => void;
+  onDeposit: () => void;
 }
 
-export default function Header({ onNewQuote }: HeaderProps) {
+export default function Header({ onNewQuote, onDeposit }: HeaderProps) {
   const { isDark, toggle } = useTheme();
   const { isAuthenticated, user, logout } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -66,10 +67,22 @@ export default function Header({ onNewQuote }: HeaderProps) {
                           {user.display_name || user.email}
                         </p>
                         <p className="text-xs text-gray-500">{user.email}</p>
-                        <span className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 capitalize">
-                          {user.tier} tier
-                        </span>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="inline-block text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 capitalize">
+                            {user.tier} tier
+                          </span>
+                        </div>
                       </div>
+                      <button
+                        onClick={() => {
+                          onDeposit();
+                          setUserMenuOpen(false);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Deposit Funds
+                      </button>
                       <button
                         onClick={() => {
                           logout();

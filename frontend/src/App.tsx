@@ -6,13 +6,14 @@ import QuoteForm from "./components/Form/QuoteForm";
 import ResultsPanel from "./components/Results/ResultsPanel";
 import SimulationPanel from "./components/Simulation/SimulationPanel";
 import HistoryPanel from "./components/History/HistoryPanel";
+import DepositPage from "./components/Account/DepositPage";
 import type {
   QuoteResponse,
   SimulateResponse,
   TransactionRecord,
 } from "./types/api";
 
-type View = "form" | "results" | "simulation" | "history";
+type View = "form" | "results" | "simulation" | "history" | "deposit";
 
 export default function App() {
   const [view, setView] = useState<View>("form");
@@ -68,7 +69,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950 transition-colors">
-      <Header onNewQuote={handleNewQuote} />
+      <Header
+        onNewQuote={handleNewQuote}
+        onDeposit={() => setView("deposit")}
+      />
 
       <Disclaimer />
 
@@ -89,8 +93,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Quote Form — always visible unless viewing simulation details */}
-        {view !== "simulation" && view !== "history" && (
+        {/* Deposit page */}
+        {view === "deposit" && <DepositPage />}
+
+        {/* Quote Form — always visible unless viewing simulation/history/deposit */}
+        {view !== "simulation" && view !== "history" && view !== "deposit" && (
           <QuoteForm
             onResult={handleQuoteResult}
             onError={setError}

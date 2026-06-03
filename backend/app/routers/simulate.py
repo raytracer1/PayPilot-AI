@@ -59,6 +59,23 @@ def simulate(
             detail="Path not found. Please request a quote first, then simulate from results.",
         )
 
+    # Balance check + deduction (when authenticated)
+    if current_user:
+        if (current_user.balance_usd or 0) < request.amount_usd:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Insufficient balance. You have ${current_user.balance_usd:.2f}, "
+                    f"but need ${request.amount_usd:.2f}. Please deposit more funds."
+                ),
+            )
+        # Deduct from balance
+        current_user.balance_usd = round(
+            (current_user.balance_usd or 0) - request.amount_usd, 2
+        )
+        db.commit()
+        db.refresh(current_user)
+
     # Run simulation
     result = run_simulation(path=path_data, amount_usd=request.amount_usd)
 

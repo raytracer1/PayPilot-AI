@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean, DateTime, Float
 from passlib.context import CryptContext
 
 from app.database import Base
@@ -24,6 +24,7 @@ class User(Base):
     display_name = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
     tier = Column(String(20), default="free")  # free | pro | enterprise
+    balance_usd = Column(Float, default=0.0)  # Simulated account balance in USD
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     @classmethod
@@ -40,5 +41,6 @@ class User(Base):
             "display_name": self.display_name,
             "is_active": self.is_active,
             "tier": self.tier,
+            "balance_usd": self.balance_usd or 0.0,
             "created_at": self.created_at.isoformat() if self.created_at else "",
         }
