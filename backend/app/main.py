@@ -1,11 +1,10 @@
-"""FastAPI application factory — PayPilot AI v4.
+"""FastAPI application factory — PayPilot AI v5.
 
-Security architecture:
-- No private keys stored in this application.
-- All fiat operations delegated to third-party providers (Stripe, MoonPay, Transak).
-- USDC transfers simulated via mock data; real integration uses Circle APIs.
-- Wallet credentials, if ever needed, stored in a secure vault (mock for MVP).
-- Every operation is logged to the audit trail for compliance.
+Unified Smart Wallet + BYO Wallet architecture.
+- Clerk authentication (email, Google, wallet-link).
+- Wallet Abstraction Layer: identical interface for both wallet types.
+- Non-custodial: platform never holds or controls user funds.
+- Every operation is logged to the audit trail.
 """
 
 from fastapi import FastAPI, Request
@@ -14,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import quotes, simulate, transactions, info, audit, siwe, wallet
+from app.routers import quotes, simulate, transactions, info, audit, wallet
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -28,8 +27,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Cache-Control"] = "no-store"
         # Mark all responses as simulated
-        response.headers["X-PayPilot-Mode"] = "NON-CUSTODIAL"
-        response.headers["X-PayPilot-Disclaimer"] = "Platform never holds user funds. Demo only."
+        response.headers["X-PayPilot-Mode"] = "SMART-ROUTING"
+        response.headers["X-PayPilot-Disclaimer"] = "Non-custodial. Platform never holds funds. Demo only."
         return response
 
 
@@ -41,7 +40,7 @@ def create_app() -> FastAPI:
             "Orchestrates USD→USDC conversion and cross-border routing via "
             "third-party providers. The platform never holds or controls user funds."
         ),
-        version="4.0.0",
+        version="5.0.0",
     )
 
     # Security headers (applied first — outermost layer)
@@ -62,7 +61,6 @@ def create_app() -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(info.router)
     app.include_router(audit.router)
-    app.include_router(siwe.router)
     app.include_router(wallet.router)
 
     @app.on_event("startup")

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "paypilot-dev-secret-change-in-prod"
 
     # App
-    app_name: str = "PayPilot AI v4"
+    app_name: str = "PayPilot AI v5"
     debug: bool = True
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

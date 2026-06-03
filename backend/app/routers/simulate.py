@@ -10,8 +10,7 @@ from app.database import get_db
 from app.models.transaction import Transaction
 from app.models.quote import Quote
 from app.models.audit_log import log_event
-from app.models.wallet_user import WalletUser
-from app.auth import get_wallet_user
+from app.clerk_auth import get_clerk_user
 from app.schemas.simulate import SimulateRequest, SimulateResponse
 from app.services.simulator import simulate as run_simulation
 
@@ -23,7 +22,7 @@ def simulate(
     request: SimulateRequest,
     db: Session = Depends(get_db),
     req: Request = None,
-    current_user: WalletUser | None = Depends(get_wallet_user),
+    clerk_user: dict | None = Depends(get_clerk_user),
 ):
     """Simulate a transaction along the chosen path. No real funds moved.
 
@@ -75,7 +74,7 @@ def simulate(
     # Persist transaction
     tx = Transaction(
         id=result["transaction_id"],
-        wallet_address=current_user.wallet_address if current_user else None,
+        wallet_address=clerk_user["user_id"] if clerk_user else None,
         amount_usd=request.amount_usd,
         destination_country=recent_quote.destination_country,
         speed_preference=recent_quote.speed_preference,
@@ -98,7 +97,7 @@ def simulate(
     log_event(
         db,
         event_type="simulation_run",
-        actor=current_user.wallet_address if current_user else "anonymous",
+        actor=clerk_user["user_id"] if clerk_user else "anonymous",
         amount_usd=request.amount_usd,
         destination_country=recent_quote.destination_country,
         speed_preference=recent_quote.speed_preference,
