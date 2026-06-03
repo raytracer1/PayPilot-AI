@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class SimulateRequest(BaseModel):
     path_id: str = Field(..., description="ID of the selected path to simulate")
     amount_usd: float = Field(gt=0, description="Original USD amount")
+    skip_on_ramp: bool = Field(False, description="USDC mode: skip on-ramp steps, transfer directly from wallet")
 
 
 class SimulationStep(BaseModel):

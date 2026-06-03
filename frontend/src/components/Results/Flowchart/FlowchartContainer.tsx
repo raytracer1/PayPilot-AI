@@ -19,13 +19,35 @@ export default function FlowchartContainer({ path }: FlowchartContainerProps) {
     const width = svgRef.current.clientWidth || 700;
     const height = 200;
 
-    const nodes: FlowNode[] = [
-      { id: "usd", label: "USD", sublabel: `$${path.summary.usd_received_after_fees + path.summary.total_fee_usd}`, phase: "start", x: 60, y: height / 2 },
-      { id: "onramp", label: path.on_ramp.provider, sublabel: `Fee: ${formatUSD(path.on_ramp.fee_usd)}`, phase: "on_ramp", x: width * 0.28, y: height / 2 },
-      { id: "network", label: path.network.name, sublabel: `Gas: ${formatUSD(path.network.gas_fee_usd)}`, phase: "network", x: width * 0.50, y: height / 2 },
-      { id: "offramp", label: path.off_ramp.provider, sublabel: `Fee: ${formatUSD(path.off_ramp.fee_usd)}`, phase: "off_ramp", x: width * 0.72, y: height / 2 },
-      { id: "local", label: path.off_ramp.currency, sublabel: `${path.summary.received_local}`, phase: "end", x: width - 60, y: height / 2 },
-    ];
+    const nodes: FlowNode[] = !path.off_ramp
+      ? (path.on_ramp
+          ? [
+              // Wallet + USDT: USD → On-Ramp → L2 → Wallet
+              { id: "usd", label: "USD", sublabel: `$${path.summary.input_amount_usd}`, phase: "start", x: 60, y: height / 2 },
+              { id: "onramp", label: path.on_ramp.provider, sublabel: `Cost: ${formatUSD(path.on_ramp.fee_usd + path.on_ramp.spread_usd)}`, phase: "on_ramp", x: width * 0.28, y: height / 2 },
+              { id: "network", label: path.network.name, sublabel: `Gas: ${formatUSD(path.network.gas_fee_usd)}`, phase: "network", x: width * 0.58, y: height / 2 },
+              { id: "recipient", label: "Wallet", sublabel: `${path.summary.received_local} USDC`, phase: "end", x: width - 80, y: height / 2 },
+            ]
+          : [
+              // Wallet + USDC: wallet → network → recipient (no on-ramp)
+              { id: "wallet", label: "Your Wallet", sublabel: "USDC", phase: "start", x: 100, y: height / 2 },
+              { id: "network", label: path.network.name, sublabel: `Gas: ${formatUSD(path.network.gas_fee_usd)}`, phase: "network", x: width * 0.5, y: height / 2 },
+              { id: "recipient", label: "Recipient", sublabel: "Wallet", phase: "end", x: width - 100, y: height / 2 },
+            ])
+      : !path.on_ramp
+          ? [
+          { id: "wallet", label: "Your Wallet", sublabel: "USDC", phase: "start", x: 80, y: height / 2 },
+          { id: "network", label: path.network.name, sublabel: `Gas: ${formatUSD(path.network.gas_fee_usd)}`, phase: "network", x: width * 0.40, y: height / 2 },
+          { id: "offramp", label: path.off_ramp.provider, sublabel: `Cost: ${formatUSD(path.off_ramp.fee_usd + path.off_ramp.spread_usd)}`, phase: "off_ramp", x: width * 0.68, y: height / 2 },
+          { id: "local", label: path.off_ramp.currency, sublabel: `${path.summary.received_local}`, phase: "end", x: width - 80, y: height / 2 },
+          ]
+      : [
+          { id: "usd", label: "USD", sublabel: `$${path.summary.input_amount_usd}`, phase: "start", x: 60, y: height / 2 },
+          { id: "onramp", label: path.on_ramp.provider, sublabel: `Cost: ${formatUSD(path.on_ramp.fee_usd + path.on_ramp.spread_usd)}`, phase: "on_ramp", x: width * 0.28, y: height / 2 },
+          { id: "network", label: path.network.name, sublabel: `Gas: ${formatUSD(path.network.gas_fee_usd)}`, phase: "network", x: width * 0.50, y: height / 2 },
+          { id: "offramp", label: path.off_ramp.provider, sublabel: `Cost: ${formatUSD(path.off_ramp.fee_usd + path.off_ramp.spread_usd)}`, phase: "off_ramp", x: width * 0.72, y: height / 2 },
+          { id: "local", label: path.off_ramp.currency, sublabel: `${path.summary.received_local}`, phase: "end", x: width - 60, y: height / 2 },
+        ];
 
     const g = svg.append("g");
     for (let i = 0; i < nodes.length - 1; i++) {
@@ -43,8 +65,16 @@ export default function FlowchartContainer({ path }: FlowchartContainerProps) {
       ng.append("text").attr("y", 8).attr("text-anchor", "middle").attr("font-size", 10).attr("fill", "#9ca3af").text(node.sublabel);
     });
 
-    const phases = ["1. On-Ramp", "2. Network", "3. Off-Ramp"];
-    const phaseX = [nodes[1].x, nodes[2].x, nodes[3].x];
+    const phases = !path.off_ramp
+      ? (path.on_ramp
+          ? ["1. On-Ramp", "2. Network", "3. Settlement"]  // wallet+USDT: 4 nodes
+          : ["1. Transfer"])  // wallet+USDC: 3 nodes
+      : !path.on_ramp
+        ? ["1. Network", "2. Off-Ramp", "3. Settlement"]
+        : ["1. On-Ramp", "2. Network", "3. Off-Ramp"];
+    const phaseX = nodes.length <= 3
+      ? [nodes[1].x]
+      : [nodes[1].x, nodes[2].x, nodes[3].x];
     phases.forEach((phase, i) => {
       g.append("text").attr("x", phaseX[i]).attr("y", 20).attr("text-anchor", "middle").attr("font-size", 11).attr("font-weight", 600).attr("fill", "#6b7280").text(phase);
     });

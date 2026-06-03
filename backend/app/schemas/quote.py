@@ -12,6 +12,8 @@ class QuoteRequest(BaseModel):
     speed_preference: str = Field(
         "balanced", pattern="^(fast|cheapest|balanced)$"
     )
+    currency: str = Field("USDT", pattern="^(USDC|USDT)$")
+    recipient_type: str = Field("bank", pattern="^(bank|wallet)$")
     wallet_address: str | None = None
     bank_account: str | None = None
 
@@ -57,30 +59,26 @@ class RiskBreakdown(BaseModel):
 
 
 class PathSummary(BaseModel):
+    input_amount_usd: float
     total_fee_usd: float
     total_time_minutes: int
-    usd_received_after_fees: float
+    on_ramp_fee_usd: float
+    on_ramp_time_minutes: int
+    gas_fee_usd: float
+    off_ramp_fee_usd: float
     received_local: float
-    received_usd_equivalent: float
     currency: str
+    exchange_rate: float
     risk_score: int
     risk_level: str
     risk_breakdown: RiskBreakdown
-    efficiency_score: float
-    speed_label: str
 
 
 class PathOption(BaseModel):
     id: str
-    rank: int
-    total_score: float
-    cost_score: float
-    speed_score: float
-    risk_score_0_100: float
-    reliability_score: float
-    on_ramp: OnRampSchema
+    on_ramp: OnRampSchema | None = None
     network: NetworkSchema
-    off_ramp: OffRampSchema
+    off_ramp: OffRampSchema | None = None
     summary: PathSummary
 
 

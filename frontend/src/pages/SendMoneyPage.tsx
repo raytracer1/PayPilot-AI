@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import QuoteForm from "../components/Form/QuoteForm";
 import ResultsPanel from "../components/Results/ResultsPanel";
 import SimulationPanel from "../components/Simulation/SimulationPanel";
 import SigningStep from "../components/Simulation/SigningStep";
+import DepositStep from "../components/Simulation/DepositStep";
 import AuthModal from "../components/Auth/AuthModal";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import type { QuoteResponse, SimulateResponse, PathOption } from "../types/api";
+import type { QuoteResponse, SimulateResponse, PathOption, ScoredPath } from "../types/api";
+import { sortPaths } from "../utils/sortPaths";
 import { api } from "../api/client";
 import { Wallet } from "lucide-react";
 
@@ -14,38 +16,50 @@ export default function SendMoneyPage() {
   const { isAuthenticated } = useApp();
   const [authOpen, setAuthOpen] = useState(false);
   const [amount, setAmount] = useState(500);
+  const [preference, setPreference] = useState("balanced");
   const [currency, setCurrency] = useState<"USDC" | "USDT">("USDC");
-  const [topUpAmount, setTopUpAmount] = useState(0);
-  const [needsTopUp, setNeedsTopUp] = useState(false);
+  const [recipientType, setRecipientType] = useState<"bank" | "wallet">("bank");
+  const [showDeposit, setShowDeposit] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [quoteData, setQuoteData] = useState<QuoteResponse | null>(null);
+  const [rawPaths, setRawPaths] = useState<PathOption[] | null>(null);
+  const [totalEvaluated, setTotalEvaluated] = useState(0);
+
+  // Auto-sort whenever rawPaths/amount/preference change
+  const sortedPaths = useMemo(() => {
+    if (!rawPaths) return null;
+    return sortPaths(rawPaths, amount, preference);
+  }, [rawPaths, amount, preference]);
+
+  const handlePreferenceChange = (pref: string) => setPreference(pref);
+
   const [simulationData, setSimulationData] = useState<SimulateResponse | null>(null);
   const [signingPath, setSigningPath] = useState<PathOption | null>(null);
 
-  const handleQuote = (data: QuoteResponse) => {
-    setQuoteData(data);
+  const clearResults = () => {
+    setRawPaths(null);
     setSimulationData(null);
+    setShowDeposit(false);
     setSigningPath(null);
     setError(null);
   };
 
-  const handleStartSimulate = (path: PathOption) => {
-    // USDT mode: always require top-up (platform never holds funds)
-    if (currency === "USDT") {
-      setSigningPath(path);
-      setNeedsTopUp(true);
-      setTopUpAmount(amount);
-      setError(null);
-      return;
-    }
-    setSigningPath(path);
-    setNeedsTopUp(false);
+  const handleRecipientTypeChange = (t: "bank" | "wallet") => setRecipientType(t);
+
+  const handleQuote = (data: QuoteResponse) => {
+    setRawPaths(data.paths);
+    setTotalEvaluated(data.meta.total_paths_evaluated);
+    setSimulationData(null);
+    setShowDeposit(false);
+    setSigningPath(null);
     setError(null);
   };
 
-  const handleTopUpAndContinue = () => {
-    setNeedsTopUp(false);
+  const handleSend = (path: PathOption) => {
+    // Testnet: always fund wallet from faucet before signing
+    setSigningPath(path);
+    setShowDeposit(true);
+    setError(null);
   };
 
   const handleSigned = async (_signature: string) => {
@@ -56,6 +70,7 @@ export default function SendMoneyPage() {
       const result = await api.simulate({
         path_id: signingPath.id,
         amount_usd: amount,
+        skip_on_ramp: currency === "USDC",
       });
       setSimulationData(result);
     } catch (err: any) {
@@ -65,7 +80,7 @@ export default function SendMoneyPage() {
 
   const handleCancelSign = () => {
     setSigningPath(null);
-    setNeedsTopUp(false);
+    setShowDeposit(false);
   };
 
   // Guard: require a wallet
@@ -98,16 +113,19 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {!simulationData && !signingPath && !needsTopUp && (
+      {!simulationData && !signingPath && !showDeposit && (
         <QuoteForm
           onResult={handleQuote}
           onError={setError}
+          onParamChange={() => { setRawPaths(null); setSimulationData(null); }}
           isLoading={isLoading}
           setIsLoading={setIsLoading}
           defaultAmount={amount}
           onAmountChange={setAmount}
           currency={currency}
           onCurrencyChange={setCurrency}
+          recipientType={recipientType}
+          onRecipientTypeChange={handleRecipientTypeChange}
         />
       )}
 
@@ -122,46 +140,38 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {/* USDT top-up step — platform never holds funds, always requires deposit */}
-      {needsTopUp && signingPath && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-amber-500 p-6 space-y-4">
-          <h3 className="font-bold text-gray-900 dark:text-white">Deposit USDT</h3>
-          <p className="text-sm text-gray-500">
-            USDT transfers require a deposit. This platform never holds your funds — the deposit is simulated for demo purposes.
-          </p>
-          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Transfer amount:</span>
-              <span className="font-medium">${amount.toFixed(2)} USDT</span>
-            </div>
-          </div>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deposit Amount (USDT)</label>
-              <input type="number" min={1} step={1} value={topUpAmount} onChange={e => setTopUpAmount(Number(e.target.value))} className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <button onClick={handleTopUpAndContinue} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">
-              Deposit
-            </button>
-          </div>
-          <p className="text-xs text-gray-400">🧪 Simulated — no real funds used</p>
-          <button onClick={handleCancelSign} className="text-sm text-gray-500 hover:underline">Cancel</button>
-        </div>
+      {/* Deposit step — identical to production UI, backend uses testnet */}
+      {showDeposit && signingPath && (
+        <DepositStep
+          amount={amount}
+          currency={currency}
+          onRampMethod={signingPath.on_ramp ? `${signingPath.on_ramp.provider} — ${signingPath.on_ramp.method}` : "Wallet"}
+          onComplete={() => setShowDeposit(false)}
+          onCancel={handleCancelSign}
+        />
       )}
 
-      {quoteData && !simulationData && !isLoading && !signingPath && !needsTopUp && (
+      {sortedPaths && !simulationData && !isLoading && !signingPath && !showDeposit && (
         <ResultsPanel
-          data={quoteData}
+          paths={sortedPaths}
+          totalEvaluated={totalEvaluated}
           amount={amount}
-          onSimulate={handleStartSimulate}
+          preference={preference}
+          onPreferenceChange={handlePreferenceChange}
+          onSend={handleSend}
           onError={setError}
         />
       )}
 
-      {signingPath && !needsTopUp && (
+      {signingPath && !showDeposit && (
         <SigningStep
-          pathLabel={`${signingPath.on_ramp.provider} → ${signingPath.network.name} → ${signingPath.off_ramp.provider}`}
+          pathLabel={signingPath.off_ramp
+            ? (signingPath.on_ramp
+              ? `${signingPath.on_ramp.provider} → ${signingPath.network.name} → ${signingPath.off_ramp.provider}`
+              : `${signingPath.network.name} → ${signingPath.off_ramp.provider}`)
+            : `${signingPath.network.name} → Wallet`}
           amount={amount}
+          token={currency}
           onSigned={handleSigned}
           onCancel={handleCancelSign}
         />

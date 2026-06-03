@@ -45,15 +45,16 @@ def get_quote(
             detail="No viable routing paths found for this destination and amount.",
         )
 
-    # AI ranking
-    ranked = routing_engine.rank_paths(
+    # Analyze all paths
+    paths = routing_engine.analyze_paths(
         raw_paths=raw_paths,
-        speed_preference=request.speed_preference,
         amount_usd=request.amount_usd,
         country=request.destination_country,
+        currency=request.currency,
+        recipient_type=request.recipient_type,
     )
 
-    if not ranked:
+    if not paths:
         raise HTTPException(
             status_code=404,
             detail=f"No paths meet the '{request.speed_preference}' speed criteria. "
@@ -67,13 +68,12 @@ def get_quote(
         speed_preference=request.speed_preference,
         sender_wallet=request.wallet_address,
         bank_account=request.bank_account,
-        paths_json=json.dumps(ranked),
+        paths_json=json.dumps(paths),
     )
     db.add(quote)
     db.commit()
 
-    # Audit log (fire-and-forget)
-    top_path = ranked[0]
+    # Audit log
     log_event(
         db,
         event_type="quote_requested",
@@ -81,25 +81,17 @@ def get_quote(
         amount_usd=request.amount_usd,
         destination_country=request.destination_country,
         speed_preference=request.speed_preference,
-        path_id=top_path["id"],
-        path_summary=(
-            f"{top_path['on_ramp']['provider']} → "
-            f"{top_path['network']['name']} → "
-            f"{top_path['off_ramp']['provider']}"
-        ),
         detail_json=json.dumps({
-            "paths_returned": len(ranked),
+            "paths_returned": len(paths),
             "paths_evaluated": len(raw_paths),
-            "top_score": top_path["total_score"],
-            "top_fee_usd": top_path["summary"]["total_fee_usd"],
         }),
     )
 
     return QuoteResponse(
-        paths=ranked,
+        paths=paths,
         meta=QuoteMeta(
             total_paths_evaluated=len(raw_paths),
-            paths_returned=len(ranked),
+            paths_returned=len(paths),
             timestamp=datetime.now(timezone.utc).isoformat(),
         ),
     )

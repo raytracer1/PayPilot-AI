@@ -6,11 +6,17 @@ import { Key, CheckCircle, Shield, Eye, EyeOff } from "lucide-react";
 interface Props {
   pathLabel: string;
   amount: number;
+  token: "USDC" | "USDT";
   onSigned: (signature: string) => void;
   onCancel: () => void;
 }
 
-export default function SigningStep({ pathLabel, amount, onSigned, onCancel }: Props) {
+const TOKEN_CONTRACTS: Record<string, string> = {
+  USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",  // Base mainnet
+  USDT: "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2",  // Base mainnet
+};
+
+export default function SigningStep({ pathLabel, amount, token, onSigned, onCancel }: Props) {
   const [privateKeyInput, setPrivateKeyInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [error, setError] = useState("");
@@ -35,11 +41,12 @@ export default function SigningStep({ pathLabel, amount, onSigned, onCancel }: P
       const account = privateKeyToAccount(key as `0x${string}`);
 
       // Construct mock transaction payload
+      const contractAddr = TOKEN_CONTRACTS[token] || TOKEN_CONTRACTS.USDC;
       const mockTx = {
         from: account.address,
-        to: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+        to: contractAddr,
         value: 0n,
-        data: `0x${"".padStart(64, "0")}`, // placeholder USDC transfer data
+        data: `0x${"".padStart(64, "0")}`, // placeholder transfer data
         chainId: 8453,
       };
 
@@ -116,7 +123,11 @@ export default function SigningStep({ pathLabel, amount, onSigned, onCancel }: P
         </div>
         <div className="flex justify-between">
           <span className="text-gray-500">Amount:</span>
-          <span className="text-gray-900 dark:text-white font-medium">${amount}</span>
+          <span className="text-gray-900 dark:text-white font-medium">${amount} {token}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-500">Network:</span>
+          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Base Sepolia (Testnet)</span>
         </div>
       </div>
 

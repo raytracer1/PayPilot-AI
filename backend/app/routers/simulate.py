@@ -50,7 +50,8 @@ def simulate(
             detail="Path not found. Request a quote first.",
         )
 
-    result = run_simulation(path=path_data, amount=request.amount_usd)
+    skip_off = path_data.get("off_ramp") is None
+    result = run_simulation(path=path_data, amount=request.amount_usd, skip_on_ramp=request.skip_on_ramp, skip_off_ramp=skip_off)
 
     # Minimal operational record — no personal identifiers
     tx = Transaction(
@@ -58,6 +59,8 @@ def simulate(
         user_hash=hash_user(current_user.id) if current_user else "anon",
         path_id=request.path_id,
         path_summary=(
+            f"{path_data['network']['name']} → Wallet"
+            if path_data.get("off_ramp") is None else
             f"{path_data['on_ramp']['provider']} → "
             f"{path_data['network']['name']} → "
             f"{path_data['off_ramp']['provider']}"

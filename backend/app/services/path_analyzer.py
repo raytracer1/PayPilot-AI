@@ -44,7 +44,7 @@ def analyze(amount_usd: float, country: str) -> list[dict]:
         for net_q in network_quotes:
             for off_q in off_ramp_quotes:
                 # Recalculate off-ramp with actual USDC received from on-ramp
-                usdc_available = on_q["usdc_received"] - net_q["gas_fee_usd"]
+                usdc_available = round(on_q["usdc_received"] - net_q["gas_fee_usd"], 2)
                 actual_off = off_ramps.get_off_ramp_quote(
                     off_q["provider_id"], country, max(usdc_available, 0)
                 )

@@ -9,16 +9,16 @@ from app.services.risk_scorer import compute_risk_score
 
 # User-preference → dimension weights
 WEIGHTS: dict[str, dict[str, float]] = {
-    "fast": {"cost": 0.15, "speed": 0.50, "risk": 0.20, "reliability": 0.15},
-    "cheapest": {"cost": 0.50, "speed": 0.15, "risk": 0.20, "reliability": 0.15},
+    "fast": {"cost": 0.05, "speed": 0.60, "risk": 0.20, "reliability": 0.15},
+    "cheapest": {"cost": 0.70, "speed": 0.05, "risk": 0.15, "reliability": 0.10},
     "balanced": {"cost": 0.25, "speed": 0.25, "risk": 0.25, "reliability": 0.25},
 }
 
 # Time limits by speed preference (minutes)
 TIME_LIMITS: dict[str, float] = {
-    "fast": 30.0,
-    "balanced": 60.0,
-    "cheapest": 120.0,
+    "fast": 60.0,         # Under 1 hour — card/crypto only
+    "balanced": 4320.0,   # 3 days — shows all options with balanced scoring
+    "cheapest": 7200.0,   # 5 days — includes slowest methods
 }
 
 
@@ -31,8 +31,10 @@ def _compute_cost_score(total_fees_usd: float, amount_usd: float) -> float:
 
 
 def _compute_speed_score(total_time_minutes: float) -> float:
-    """Score 0-100: exponential decay by total time."""
-    return max(0.0, 100.0 * math.exp(-0.04 * total_time_minutes))
+    """Score 0-100: exponential decay.
+    -0.001 decay means: 10min→99, 1h→94, 1d→24, 2d→6, 3d→0.7
+    This keeps multi-day differences distinguishable."""
+    return max(0.0, 100.0 * math.exp(-0.001 * total_time_minutes))
 
 
 def _compute_reliability_score(on_ramp: dict, network: dict, off_ramp: dict) -> float:
@@ -59,54 +61,49 @@ def _compute_risk_score_0_100(
     return round(100.0 - ((avg_risk - 1.0) / 4.0) * 100.0, 1)
 
 
-def rank_paths(
+def analyze_paths(
     raw_paths: list[dict],
-    speed_preference: str,
     amount_usd: float,
     country: str,
+    currency: str = "USDT",
+    recipient_type: str = "bank",
 ) -> list[dict]:
-    """Score and rank all paths, returning top 5 with full metadata.
+    """Analyze all paths — compute dimension scores, dedup where needed.
 
-    Each returned path includes:
-      - id, rank, total_score
-      - on_ramp, network, off_ramp info
-      - summary with computed fees, times, risk
+    USDC mode: dedup by network+off_ramp (on-ramp free for all), keep best rated.
+    USDT mode: keep all paths (on-ramp fees differ meaningfully).
     """
-    w = WEIGHTS.get(speed_preference, WEIGHTS["balanced"])
-    time_limit = TIME_LIMITS.get(speed_preference, TIME_LIMITS["balanced"])
+    # USDC: sort by on_ramp rating so dedup keeps the best
+    sorted_raw = (
+        sorted(raw_paths, key=lambda p: p["on_ramp"]["rating"], reverse=True)
+        if currency == "USDC" else raw_paths
+    )
 
-    scored = []
-
-    for path in raw_paths:
+    paths = []
+    seen = set()
+    for path in sorted_raw:
         on = path["on_ramp"]
         net = path["network"]
         off = path["off_ramp"]
 
-        # Total fees
-        total_fee = on["fee_usd"] + on["spread_usd"] + net["gas_fee_usd"] + off["fee_usd"] + off["spread_usd"]
-        total_time = on["time_minutes"] + net["time_minutes"] + off["time_minutes"]
+        # Wallet recipient: no off-ramp needed, just L2 transfer to recipient wallet
+        is_wallet = recipient_type == "wallet"
 
-        # Filter by time limit
-        if total_time > time_limit:
-            continue
+        if currency == "USDC":
+            on_fee, on_spread, on_time = 0.0, 0.0, 0
+        else:
+            on_fee, on_spread, on_time = on["fee_usd"], on["spread_usd"], on["time_minutes"]
 
-        # Compute dimension scores
-        cost_score = _compute_cost_score(total_fee, amount_usd)
-        speed_score = _compute_speed_score(total_time)
-        risk_0_100 = _compute_risk_score_0_100(country, on, net, off, intermediary_count=3)
-        reliability_score = _compute_reliability_score(on, net, off)
+        if is_wallet:
+            off_fee, off_spread, off_time = 0.0, 0.0, 0
+        else:
+            off_fee, off_spread, off_time = off["fee_usd"], off["spread_usd"], off["time_minutes"]
 
-        # Weighted total
-        total_score = round(
-            w["cost"] * cost_score
-            + w["speed"] * speed_score
-            + w["risk"] * risk_0_100
-            + w["reliability"] * reliability_score,
-            1,
-        )
+        total_fee = round(
+            round(on_fee, 2) + round(on_spread, 2) + round(net["gas_fee_usd"], 4) +
+            round(off_fee, 2) + round(off_spread, 2), 2)
+        total_time = on_time + net["time_minutes"] + off_time
 
-        # Build summary
-        usd_after_fees = round(amount_usd - total_fee, 2)
         risk_info = compute_risk_score(
             country=country,
             on_ramp_id=on.get("provider_id", ""),
@@ -115,64 +112,41 @@ def rank_paths(
             intermediary_count=3,
         )
 
-        scored.append({
-            "on_ramp": on,
-            "network": net,
-            "off_ramp": off,
-            "total_score": total_score,
-            "cost_score": round(cost_score, 1),
-            "speed_score": round(speed_score, 1),
-            "risk_score_0_100": risk_0_100,
-            "reliability_score": reliability_score,
+        path_id = f"path_{on['provider_id']}_{net['network_id']}_{off['provider_id']}"
+
+        # USDC: dedup by network+off_ramp (keep highest-rated on_ramp, already sorted)
+        if currency == "USDC":
+            key = f"{net['network_id']}_{off['provider_id']}"
+            if key in seen:
+                continue
+            seen.add(key)
+
+        paths.append({
+            "id": path_id,
+            "on_ramp": (
+                None if currency == "USDC" else
+                {k: v for k, v in on.items() if k not in ("provider_id",)}
+            ),
+            "network": {k: v for k, v in net.items() if k not in ("network_id",)},
+            "off_ramp": (
+                None if is_wallet else
+                {k: v for k, v in off.items() if k not in ("provider_id",)}
+            ),
             "summary": {
-                "total_fee_usd": round(total_fee, 2),
+                "input_amount_usd": amount_usd,
+                "total_fee_usd": total_fee,
                 "total_time_minutes": total_time,
-                "usd_received_after_fees": usd_after_fees,
-                "received_local": off["received_local"],
-                "received_usd_equivalent": round(off["received_local"] / off["exchange_rate"], 2),
-                "currency": off["currency"],
+                "on_ramp_fee_usd": round(on_fee + on_spread, 2),
+                "on_ramp_time_minutes": on_time,
+                "gas_fee_usd": net["gas_fee_usd"],
+                "off_ramp_fee_usd": round(off_fee + off_spread, 2),
+                "received_local": round(amount_usd - on_fee - on_spread - net["gas_fee_usd"], 2) if is_wallet else off["received_local"],
+                "currency": "USDC" if is_wallet else off["currency"],
+                "exchange_rate": 1.0 if is_wallet else off["exchange_rate"],
                 "risk_score": risk_info["overall"],
                 "risk_level": risk_info["level"],
                 "risk_breakdown": risk_info,
-                "efficiency_score": round(
-                    (usd_after_fees / amount_usd) * 100, 1
-                ),
-                "speed_label": (
-                    "fast" if total_time <= 20
-                    else "medium" if total_time <= 45
-                    else "slow"
-                ),
             },
         })
 
-    # Sort by total_score descending
-    scored.sort(key=lambda x: x["total_score"], reverse=True)
-
-    # Assign ranks and IDs
-    ranked = []
-    for i, p in enumerate(scored[:5]):
-        path_id = f"path_{p['on_ramp']['provider_id']}_{p['network']['network_id']}_{p['off_ramp']['provider_id']}"
-        ranked.append({
-            "id": path_id,
-            "rank": i + 1,
-            "total_score": p["total_score"],
-            "cost_score": p["cost_score"],
-            "speed_score": p["speed_score"],
-            "risk_score_0_100": p["risk_score_0_100"],
-            "reliability_score": p["reliability_score"],
-            "on_ramp": {
-                k: v for k, v in p["on_ramp"].items()
-                if k not in ("provider_id",)
-            },
-            "network": {
-                k: v for k, v in p["network"].items()
-                if k not in ("network_id",)
-            },
-            "off_ramp": {
-                k: v for k, v in p["off_ramp"].items()
-                if k not in ("provider_id",)
-            },
-            "summary": p["summary"],
-        })
-
-    return ranked
+    return paths

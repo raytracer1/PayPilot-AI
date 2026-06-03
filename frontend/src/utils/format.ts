@@ -35,11 +35,20 @@ export function formatDuration(minutes: number): string {
   if (minutes < 1) return "< 1 min";
   if (minutes === 1) return "1 min";
   if (minutes < 60) return `${minutes} min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+  if (minutes < DAY) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  }
+  const d = Math.floor(minutes / DAY);
+  const remaining = minutes % DAY;
+  const h = Math.floor(remaining / 60);
+  if (h === 0) return `${d} day${d > 1 ? "s" : ""}`;
+  return `${d}d ${h}h`;
 }
+
+const DAY = 1440;
 
 /** Format a percentage. */
 export function formatPercent(value: number): string {

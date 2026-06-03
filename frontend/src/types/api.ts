@@ -4,6 +4,8 @@ export interface QuoteRequest {
   amount_usd: number;
   destination_country: string;
   speed_preference: "fast" | "cheapest" | "balanced";
+  currency?: "USDC" | "USDT";
+  recipient_type?: "bank" | "wallet";
   wallet_address?: string | null;
   bank_account?: string | null;
 }
@@ -11,6 +13,7 @@ export interface QuoteRequest {
 export interface SimulateRequest {
   path_id: string;
   amount_usd: number;
+  skip_on_ramp?: boolean;
 }
 
 /* ─── Response Types ─── */
@@ -56,31 +59,31 @@ export interface RiskBreakdown {
 }
 
 export interface PathSummary {
+  input_amount_usd: number;
   total_fee_usd: number;
   total_time_minutes: number;
-  usd_received_after_fees: number;
+  on_ramp_fee_usd: number;
+  on_ramp_time_minutes: number;
+  gas_fee_usd: number;
+  off_ramp_fee_usd: number;
   received_local: number;
-  received_usd_equivalent: number;
   currency: string;
+  exchange_rate: number;
   risk_score: number;
   risk_level: string;
   risk_breakdown: RiskBreakdown;
-  efficiency_score: number;
-  speed_label: string;
 }
 
 export interface PathOption {
   id: string;
-  rank: number;
-  total_score: number;
-  cost_score: number;
-  speed_score: number;
-  risk_score_0_100: number;
-  reliability_score: number;
-  on_ramp: OnRampInfo;
+  on_ramp: OnRampInfo | null;
   network: NetworkInfo;
-  off_ramp: OffRampInfo;
+  off_ramp: OffRampInfo | null;
   summary: PathSummary;
+}
+
+export interface ScoredPath extends PathOption {
+  score: number;
 }
 
 export interface QuoteResponse {

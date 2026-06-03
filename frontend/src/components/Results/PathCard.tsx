@@ -1,28 +1,39 @@
 import type { PathOption } from "../../types/api";
-import { formatUSD, formatDuration, formatLocal } from "../../utils/format";
+import { formatUSD, formatLocal } from "../../utils/format";
 import { COUNTRIES } from "../../utils/constants";
 import RiskBadge from "./RiskBadge";
 import CostBreakdown from "./CostBreakdown";
 import FlowchartContainer from "./Flowchart/FlowchartContainer";
-import { ChevronDown, ChevronUp, Play } from "lucide-react";
+import { ChevronDown, ChevronUp, Send } from "lucide-react";
 import { useState } from "react";
 
 interface PathCardProps {
   path: PathOption;
   rank: number;
+  score: number;
   amount: number;
   destinationCountry: string;
-  onSimulate: (path: PathOption) => void;
+  onSend: (path: PathOption) => void;
   isExpanded: boolean;
   onToggle: () => void;
+}
+
+function formatTime(t: number): string {
+  const dy = Math.floor(t / 1440);
+  const h = Math.floor((t % 1440) / 60);
+  const m = t % 60;
+  if (dy > 0) return `${dy}d ${h}h`;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m} min`;
 }
 
 export default function PathCard({
   path,
   rank,
+  score,
   amount,
   destinationCountry,
-  onSimulate,
+  onSend,
   isExpanded,
   onToggle,
 }: PathCardProps) {
@@ -53,8 +64,11 @@ export default function PathCard({
                 #{rank}
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
-                {path.on_ramp.provider} → {path.network.name} →{" "}
-                {path.off_ramp.provider}
+                {path.off_ramp
+                  ? (path.on_ramp
+                    ? `${path.on_ramp.provider} → ${path.network.name} → ${path.off_ramp.provider}`
+                    : `${path.network.name} → ${path.off_ramp.provider}`)
+                  : `${path.network.name} → Wallet`}
               </span>
               <RiskBadge
                 score={path.summary.risk_score}
@@ -62,14 +76,14 @@ export default function PathCard({
               />
               <span
                 className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  path.summary.speed_label === "fast"
+                  path.summary.total_time_minutes <= 20
                     ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                    : path.summary.speed_label === "medium"
+                    : path.summary.total_time_minutes <= 60
                     ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300"
                     : "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300"
                 }`}
               >
-                {path.summary.speed_label}
+                {path.summary.total_time_minutes <= 20 ? "fast" : path.summary.total_time_minutes <= 60 ? "medium" : "slow"}
               </span>
             </div>
 
@@ -88,7 +102,9 @@ export default function PathCard({
                   Time
                 </div>
                 <div className="font-bold text-gray-900 dark:text-white">
-                  {formatDuration(path.summary.total_time_minutes)}
+                  {path.summary.total_time_minutes < 60
+                    ? `${path.summary.total_time_minutes} min`
+                    : formatTime(path.summary.total_time_minutes)}
                 </div>
               </div>
               <div>
@@ -108,7 +124,7 @@ export default function PathCard({
                   AI Score
                 </div>
                 <div className="font-bold text-blue-600 dark:text-blue-400">
-                  {path.total_score}/100
+                  {score}/100
                 </div>
               </div>
             </div>
@@ -118,11 +134,11 @@ export default function PathCard({
         {/* Actions */}
         <div className="flex items-center gap-2 mt-4">
           <button
-            onClick={() => onSimulate(path)}
+            onClick={() => onSend(path)}
             className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white text-sm font-medium rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all shadow-sm"
           >
-            <Play className="w-4 h-4" />
-            Simulate
+            <Send className="w-4 h-4" />
+            Send
           </button>
           <button
             onClick={onToggle}

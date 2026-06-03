@@ -170,9 +170,9 @@ def get_off_ramp_quote(provider_id: str, country: str, amount_usdc: float) -> di
     time_minutes = max(1, round(_jitter(provider["base_time_minutes"], 0.05)))
     exchange_rate = round(_jitter(provider["base_exchange_rate"], 0.005), 2)
 
-    usdc_after_fee = amount_usdc - fee_usd
+    usdc_after_fee = round(amount_usdc - fee_usd, 2)
     spread_usd = round(usdc_after_fee * spread_pct / 100, 2)
-    usdc_after_spread = usdc_after_fee - spread_usd
+    usdc_after_spread = round(usdc_after_fee - spread_usd, 2)
     received_local = round(usdc_after_spread * exchange_rate, 2)
 
     return {

@@ -19,7 +19,7 @@ export default function SimulationPanel({
 }: SimulationPanelProps) {
   const p = data.path_snapshot;
   const country = COUNTRIES.find(
-    (c) => c.currency === p?.off_ramp.currency
+    (c) => c.currency === p?.off_ramp?.currency
   );
 
   const handleViewHistory = async () => {
@@ -101,15 +101,20 @@ export default function SimulationPanel({
             🏦 Recipient Gets
           </div>
           <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-            {formatLocal(
-              data.summary.final_amount_local,
-              data.summary.local_currency,
-              country?.currency_symbol || "$"
-            )}
+            {data.summary.local_currency === "USDC"
+              ? `${data.summary.final_amount_local} USDC`
+              : formatLocal(
+                  data.summary.final_amount_local,
+                  data.summary.local_currency,
+                  country?.currency_symbol || "$"
+                )
+            }
           </div>
-          <div className="text-xs text-gray-400 mt-1">
-            ≈ {formatUSD(data.summary.usd_equivalent_received)} USD equivalent
-          </div>
+          {data.summary.local_currency !== "USDC" && (
+            <div className="text-xs text-gray-400 mt-1">
+              ≈ {formatUSD(data.summary.usd_equivalent_received)} USD equivalent
+            </div>
+          )}
         </div>
       </div>
 

@@ -4,25 +4,19 @@ import random
 
 from app.config import settings
 
+# Time constants (minutes)
+HOUR = 60
+DAY = 1440  # 24h
+BUSINESS_DAY = DAY  # for simulation, treat as calendar day
+
 ON_RAMP_PROVIDERS: dict[str, dict] = {
-    "robinhood": {
-        "id": "robinhood",
-        "name": "Robinhood",
-        "method": "Bank Transfer → USDC",
-        "base_fee_usd": 0.00,
-        "spread_pct": 0.01,
-        "base_time_minutes": 10,
-        "rating": 4.5,
-        "max_amount": 100000,
-        "supported_countries": ["US"],
-    },
     "circle_ach": {
         "id": "circle_ach",
         "name": "Circle",
         "method": "ACH Transfer",
         "base_fee_usd": 0.00,
         "spread_pct": 0.03,
-        "base_time_minutes": 5,
+        "base_time_minutes": 2 * DAY,  # 2 business days
         "rating": 4.9,
         "max_amount": 100000,
         "supported_countries": ["US"],
@@ -33,9 +27,20 @@ ON_RAMP_PROVIDERS: dict[str, dict] = {
         "method": "ACH + Buy USDC",
         "base_fee_usd": 0.00,
         "spread_pct": 0.10,
-        "base_time_minutes": 8,
+        "base_time_minutes": 3 * DAY,  # ACH + exchange processing
         "rating": 4.8,
         "max_amount": 25000,
+        "supported_countries": ["US"],
+    },
+    "robinhood": {
+        "id": "robinhood",
+        "name": "Robinhood",
+        "method": "Bank Transfer → USDC",
+        "base_fee_usd": 0.00,
+        "spread_pct": 0.01,
+        "base_time_minutes": 1 * DAY,  # 1 business day
+        "rating": 4.5,
+        "max_amount": 100000,
         "supported_countries": ["US"],
     },
     "moonpay": {
@@ -44,20 +49,9 @@ ON_RAMP_PROVIDERS: dict[str, dict] = {
         "method": "Debit Card",
         "base_fee_usd": 3.50,
         "spread_pct": 0.50,
-        "base_time_minutes": 5,
+        "base_time_minutes": 5,  # Instant
         "rating": 4.2,
         "max_amount": 10000,
-        "supported_countries": ["US"],
-    },
-    "binance": {
-        "id": "binance",
-        "name": "Binance",
-        "method": "Wire Transfer",
-        "base_fee_usd": 1.00,
-        "spread_pct": 0.30,
-        "base_time_minutes": 15,
-        "rating": 4.5,
-        "max_amount": 50000,
         "supported_countries": ["US"],
     },
     "transak": {
@@ -66,9 +60,20 @@ ON_RAMP_PROVIDERS: dict[str, dict] = {
         "method": "Credit/Debit Card",
         "base_fee_usd": 2.00,
         "spread_pct": 0.40,
-        "base_time_minutes": 8,
+        "base_time_minutes": 5,  # Instant
         "rating": 4.0,
         "max_amount": 15000,
+        "supported_countries": ["US"],
+    },
+    "binance": {
+        "id": "binance",
+        "name": "Binance",
+        "method": "Wire Transfer",
+        "base_fee_usd": 1.00,
+        "spread_pct": 0.30,
+        "base_time_minutes": 4 * HOUR,  # Same day wire
+        "rating": 4.5,
+        "max_amount": 50000,
         "supported_countries": ["US"],
     },
 }
@@ -94,7 +99,8 @@ def get_on_ramp_quote(provider_id: str, amount_usd: float) -> dict | None:
     spread_usd = round(amount_usd * spread_pct / 100, 2)
     time_minutes = max(1, round(_jitter(provider["base_time_minutes"], 0.05)))
 
-    usdc_received = round(amount_usd - fee_usd - spread_usd, 2)
+    # Ensure clean 2dp values to avoid floating point artifacts
+    usdc_received = round(round(amount_usd, 2) - fee_usd - spread_usd, 2)
 
     return {
         "provider": provider["name"],

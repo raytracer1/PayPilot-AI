@@ -1,58 +1,68 @@
 import { useState } from "react";
-import type { QuoteResponse, PathOption } from "../../types/api";
+import type { ScoredPath, PathOption } from "../../types/api";
 import PathCard from "./PathCard";
 
 interface ResultsPanelProps {
-  data: QuoteResponse;
+  paths: ScoredPath[];
+  totalEvaluated: number;
   amount: number;
-  onSimulate: (path: PathOption) => void;
+  preference: string;
+  onPreferenceChange: (pref: string) => void;
+  onSend: (path: PathOption) => void;
   onError: (msg: string) => void;
 }
 
 export default function ResultsPanel({
-  data,
+  paths,
+  totalEvaluated,
   amount,
-  onSimulate,
+  preference,
+  onPreferenceChange,
+  onSend,
   onError,
 }: ResultsPanelProps) {
   const [expandedPathId, setExpandedPathId] = useState<string | null>(null);
-  const destinationCountry =
-    data.paths[0]?.off_ramp?.currency === "MXN"
-      ? "MX"
-      : "BR";
-
-  const handleSimulate = (path: PathOption) => {
-    onSimulate(path);
-  };
+  const destinationCountry = paths[0]?.off_ramp?.currency === "MXN" ? "MX" : "BR";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-            {data.meta.paths_returned} Routes Found
+            {paths.length} Routes Found
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Evaluated {data.meta.total_paths_evaluated} paths · Best picks
-            shown below
+            Evaluated {totalEvaluated} paths · Sorted by {preference}
           </p>
+        </div>
+        <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+          {(["fast", "balanced", "cheapest"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => onPreferenceChange(p)}
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors capitalize ${
+                preference === p
+                  ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm"
+                  : "text-gray-500"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
         </div>
       </div>
 
-      {data.paths.map((path) => (
+      {paths.map((path, i) => (
         <PathCard
           key={path.id}
           path={path}
-          rank={path.rank}
+          rank={i + 1}
+          score={path.score}
           amount={amount}
           destinationCountry={destinationCountry}
-          onSimulate={handleSimulate}
+          onSend={(p) => onSend(p)}
           isExpanded={expandedPathId === path.id}
-          onToggle={() =>
-            setExpandedPathId(
-              expandedPathId === path.id ? null : path.id
-            )
-          }
+          onToggle={() => setExpandedPathId(expandedPathId === path.id ? null : path.id)}
         />
       ))}
     </div>
