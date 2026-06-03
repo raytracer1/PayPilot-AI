@@ -44,7 +44,8 @@ def _compute_reliability_score(on_ramp: dict, network: dict, off_ramp: dict) -> 
 
 
 def _compute_risk_score_0_100(
-    country: str, on_ramp: dict, network: dict, off_ramp: dict
+    country: str, on_ramp: dict, network: dict, off_ramp: dict,
+    intermediary_count: int = 3,
 ) -> float:
     """Convert 1-5 risk to 0-100 score (higher = lower risk)."""
     risk = compute_risk_score(
@@ -52,6 +53,7 @@ def _compute_risk_score_0_100(
         on_ramp_id=on_ramp.get("provider_id", ""),
         network_id=network.get("network_id", ""),
         off_ramp_id=off_ramp.get("provider_id", ""),
+        intermediary_count=intermediary_count,
     )
     avg_risk = risk["overall"]
     return round(100.0 - ((avg_risk - 1.0) / 4.0) * 100.0, 1)
@@ -91,7 +93,7 @@ def rank_paths(
         # Compute dimension scores
         cost_score = _compute_cost_score(total_fee, amount_usd)
         speed_score = _compute_speed_score(total_time)
-        risk_0_100 = _compute_risk_score_0_100(country, on, net, off)
+        risk_0_100 = _compute_risk_score_0_100(country, on, net, off, intermediary_count=3)
         reliability_score = _compute_reliability_score(on, net, off)
 
         # Weighted total
@@ -110,6 +112,7 @@ def rank_paths(
             on_ramp_id=on.get("provider_id", ""),
             network_id=net.get("network_id", ""),
             off_ramp_id=off.get("provider_id", ""),
+            intermediary_count=3,
         )
 
         scored.append({

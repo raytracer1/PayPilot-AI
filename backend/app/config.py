@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_enabled: bool = False
 
     # App
-    app_name: str = "PayPilot AI v2"
+    app_name: str = "PayPilot AI v3"
     debug: bool = True
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 

@@ -20,6 +20,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String, primary_key=True, default=_tx_id)
+    user_id = Column(String, nullable=True, index=True)  # FK to users.id (optional for demo)
     amount_usd = Column(Float, nullable=False)
     destination_country = Column(String(2), nullable=False)
     speed_preference = Column(String(20), nullable=False)

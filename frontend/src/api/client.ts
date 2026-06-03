@@ -17,12 +17,21 @@ class ApiError extends Error {
   }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("paypilot_token");
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return {};
+}
+
 async function request<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
+  const authHeaders = getAuthHeaders();
   const res = await fetch(endpoint, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     ...options,
   });
   if (!res.ok) {

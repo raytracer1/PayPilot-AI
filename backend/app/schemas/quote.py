@@ -51,6 +51,7 @@ class RiskBreakdown(BaseModel):
     regulatory: float
     congestion: float
     liquidity: float
+    intermediary: float
     overall: int
     level: str
 

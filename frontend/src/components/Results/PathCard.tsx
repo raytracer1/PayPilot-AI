@@ -164,6 +164,10 @@ export default function PathCard({
                     label: "Liquidity",
                     score: path.summary.risk_breakdown.liquidity,
                   },
+                  {
+                    label: "Intermediaries",
+                    score: path.summary.risk_breakdown.intermediary,
+                  },
                 ].map((r) => (
                   <div key={r.label}>
                     <div className="flex justify-between text-sm mb-1">

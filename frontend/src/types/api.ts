@@ -50,6 +50,7 @@ export interface RiskBreakdown {
   regulatory: number;
   congestion: number;
   liquidity: number;
+  intermediary: number;
   overall: number;
   level: string;
 }

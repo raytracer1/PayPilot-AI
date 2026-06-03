@@ -3,12 +3,15 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.transaction import Transaction
 from app.models.quote import Quote
+from app.models.audit_log import log_event
+from app.models.user import User
+from app.auth import get_current_user
 from app.schemas.simulate import SimulateRequest, SimulateResponse
 from app.services.simulator import simulate as run_simulation
 
@@ -16,8 +19,19 @@ router = APIRouter(prefix="/api", tags=["simulate"])
 
 
 @router.post("/simulate", response_model=SimulateResponse)
-def simulate(request: SimulateRequest, db: Session = Depends(get_db)):
-    """Simulate a transaction along the chosen path. No real funds moved."""
+def simulate(
+    request: SimulateRequest,
+    db: Session = Depends(get_db),
+    req: Request = None,
+    current_user: User | None = Depends(get_current_user),
+):
+    """Simulate a transaction along the chosen path. No real funds moved.
+
+    SECURITY: This is a simulation-only endpoint. In production, the actual
+    fund transfer would be executed via third-party APIs (Circle, Bitso, etc.)
+    — this application NEVER custodies funds directly.
+    """
+    client_ip = req.client.host if req else None
 
     # Find the path from a recent quote (or accept any valid path_id)
     # For simplicity, the path_id encodes provider info
@@ -48,9 +62,16 @@ def simulate(request: SimulateRequest, db: Session = Depends(get_db)):
     # Run simulation
     result = run_simulation(path=path_data, amount_usd=request.amount_usd)
 
+    path_summary = (
+        f"{path_data['on_ramp']['provider']} → "
+        f"{path_data['network']['name']} → "
+        f"{path_data['off_ramp']['provider']}"
+    )
+
     # Persist transaction
     tx = Transaction(
         id=result["transaction_id"],
+        user_id=current_user.id if current_user else None,
         amount_usd=request.amount_usd,
         destination_country=recent_quote.destination_country,
         speed_preference=recent_quote.speed_preference,
@@ -61,16 +82,35 @@ def simulate(request: SimulateRequest, db: Session = Depends(get_db)):
         total_time_minutes=result["summary"]["total_time_minutes"],
         received_local=result["summary"]["final_amount_local"],
         local_currency=result["summary"]["local_currency"],
-        selected_path_summary=(
-            f"{path_data['on_ramp']['provider']} → "
-            f"{path_data['network']['name']} → "
-            f"{path_data['off_ramp']['provider']}"
-        ),
+        selected_path_summary=path_summary,
         path_snapshot_json=json.dumps(path_data),
         steps_json=json.dumps(result["steps"]),
         completed_at=datetime.now(timezone.utc),
     )
     db.add(tx)
     db.commit()
+
+    # Audit log
+    log_event(
+        db,
+        event_type="simulation_run",
+        actor=current_user.email if current_user else "anonymous",
+        amount_usd=request.amount_usd,
+        destination_country=recent_quote.destination_country,
+        speed_preference=recent_quote.speed_preference,
+        path_id=request.path_id,
+        path_summary=path_summary,
+        simulation_id=result["simulation_id"],
+        transaction_id=result["transaction_id"],
+        detail_json=json.dumps({
+            "total_fee_usd": result["summary"]["total_fee_usd"],
+            "total_time_minutes": result["summary"]["total_time_minutes"],
+            "final_amount_local": result["summary"]["final_amount_local"],
+            "local_currency": result["summary"]["local_currency"],
+            "steps_count": len(result["steps"]),
+            "mode": "SIMULATION",
+        }),
+        client_ip=client_ip,
+    )
 
     return SimulateResponse(**result)
