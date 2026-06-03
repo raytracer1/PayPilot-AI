@@ -14,6 +14,8 @@ interface QuoteFormProps {
   setIsLoading: (v: boolean) => void;
   defaultAmount: number;
   onAmountChange: (v: number) => void;
+  currency: "USDC" | "USDT";
+  onCurrencyChange: (c: "USDC" | "USDT") => void;
 }
 
 export default function QuoteForm({
@@ -23,6 +25,8 @@ export default function QuoteForm({
   setIsLoading,
   defaultAmount,
   onAmountChange,
+  currency,
+  onCurrencyChange,
 }: QuoteFormProps) {
   const [amount, setAmount] = useState(defaultAmount);
   const [country, setCountry] = useState("MX");
@@ -76,6 +80,8 @@ export default function QuoteForm({
         <AmountInput
           value={amount}
           onChange={(v) => setAmount(v > 0 ? v : 0)}
+          currency={currency}
+          onCurrencyChange={onCurrencyChange}
         />
         <CountrySelect value={country} onChange={setCountry} />
       </div>

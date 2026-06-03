@@ -50,7 +50,7 @@ def simulate(
             detail="Path not found. Request a quote first.",
         )
 
-    result = run_simulation(path=path_data, amount_usdc=request.amount_usd)
+    result = run_simulation(path=path_data, amount=request.amount_usd)
 
     # Minimal operational record — no personal identifiers
     tx = Transaction(
@@ -58,6 +58,7 @@ def simulate(
         user_hash=hash_user(current_user.id) if current_user else "anon",
         path_id=request.path_id,
         path_summary=(
+            f"{path_data['on_ramp']['provider']} → "
             f"{path_data['network']['name']} → "
             f"{path_data['off_ramp']['provider']}"
         ),

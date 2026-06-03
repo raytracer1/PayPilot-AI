@@ -1,4 +1,4 @@
-"""Simulation engine — non-custodial: USDC flows directly from user wallet."""
+"""Simulation engine — generates step-by-step transaction timeline."""
 
 import hashlib
 import uuid
@@ -9,89 +9,123 @@ def _mock_tx_hash(path_id: str, step_num: int, salt: str = "") -> str:
     return "0x" + hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def simulate(path: dict, amount_usdc: float) -> dict:
-    """Generate simulated transaction steps starting from user wallet USDC.
-
-    Non-custodial flow:
-      User Wallet (USDC) → L2 transfer → Off-ramp exchange → Local fiat → Bank
-    """
+def simulate(path: dict, amount: float) -> dict:
+    """Generate simulated transaction steps — full flow including on-ramp."""
     sim_id = f"sim_{uuid.uuid4().hex[:8]}"
     tx_id = f"tx_{uuid.uuid4().hex[:12]}"
     path_id = path["id"]
 
+    on = path["on_ramp"]
     net = path["network"]
     off = path["off_ramp"]
 
     steps = []
-    offset = 0  # cumulative minutes
+    offset = 0
 
-    # Step 1: USDC transfer from user wallet via L2
-    after_gas = round(amount_usdc - net["gas_fee_usd"], 2)
+    # Step 1: USD deposit to on-ramp
     steps.append({
         "step_number": 1,
-        "phase": "network",
-        "name": f"Send USDC via {net['name']}",
+        "phase": "on_ramp",
+        "name": f"USD Deposit to {on['provider']}",
         "status": "completed",
         "timestamp_offset_minutes": offset,
-        "duration_minutes": net["time_minutes"],
+        "duration_minutes": on["time_minutes"],
         "details": {
-            "from": "Your Wallet",
-            "to": f"{off['provider']} USDC Deposit",
-            "amount_usdc": amount_usdc,
-            "network": net["name"],
-            "layer": net["layer"],
-            "gas_fee_usd": net["gas_fee_usd"],
-            "tx_hash": _mock_tx_hash(path_id, 1, "transfer"),
+            "from": "User Bank Account",
+            "to": f"{on['provider']} USD Wallet",
+            "amount_usd": amount,
+            "fee_usd": on["fee_usd"],
+            "tx_hash": _mock_tx_hash(path_id, 1, "deposit"),
         },
     })
-    offset += net["time_minutes"]
+    offset += on["time_minutes"]
 
-    # Step 2: USDC arrives at off-ramp exchange
+    # Step 2: USD → USDC conversion
+    usdc_received = round(amount - on["fee_usd"] - on["spread_usd"], 2)
     steps.append({
         "step_number": 2,
-        "phase": "off_ramp",
-        "name": f"USDC Received by {off['provider']}",
+        "phase": "on_ramp",
+        "name": f"Convert USD to USDC on {on['provider']}",
         "status": "completed",
         "timestamp_offset_minutes": offset,
         "duration_minutes": 1,
         "details": {
-            "from": f"{net['name']} Network",
-            "to": f"{off['provider']} USDC Wallet",
-            "amount_usdc": after_gas,
-            "confirmations": 12 if net["layer"] == "L2" else 32,
-            "tx_hash": _mock_tx_hash(path_id, 2, "arrive"),
+            "from": f"{on['provider']} USD Wallet",
+            "to": f"{on['provider']} USDC Wallet",
+            "amount_usd": round(amount - on["fee_usd"], 2),
+            "usdc_received": usdc_received,
+            "spread_usd": on["spread_usd"],
+            "spread_pct": on["spread_pct"],
+            "exchange_rate": 1.0,
+            "tx_hash": _mock_tx_hash(path_id, 2, "convert"),
         },
     })
     offset += 1
 
-    # Step 3: USDC → local currency conversion
-    after_fee = round(after_gas - off["fee_usd"], 2)
+    # Step 3: Network transfer
     steps.append({
         "step_number": 3,
+        "phase": "network",
+        "name": f"Transfer USDC via {net['name']} Network",
+        "status": "completed",
+        "timestamp_offset_minutes": offset,
+        "duration_minutes": net["time_minutes"],
+        "details": {
+            "from": f"{on['provider']} USDC Wallet",
+            "to": f"Self-Custody {net['name']} USDC",
+            "network": net["name"],
+            "layer": net["layer"],
+            "gas_fee_usd": net["gas_fee_usd"],
+            "confirmations": 12 if net["layer"] == "L2" else 32,
+            "tx_hash": _mock_tx_hash(path_id, 3, "bridge"),
+        },
+    })
+    offset += net["time_minutes"]
+
+    # Step 4: Transfer USDC to off-ramp
+    steps.append({
+        "step_number": 4,
         "phase": "off_ramp",
-        "name": f"Convert USDC to {off['currency']}",
+        "name": f"Transfer USDC to {off['provider']}",
+        "status": "completed",
+        "timestamp_offset_minutes": offset,
+        "duration_minutes": 1,
+        "details": {
+            "from": f"Self-Custody {net['name']} USDC",
+            "to": f"{off['provider']} USDC Wallet",
+            "amount": round(usdc_received - net["gas_fee_usd"], 2),
+            "fee_usd": off["fee_usd"],
+            "tx_hash": _mock_tx_hash(path_id, 4, "offramp"),
+        },
+    })
+    offset += 1
+
+    # Step 5: USDC → local currency
+    steps.append({
+        "step_number": 5,
+        "phase": "off_ramp",
+        "name": f"Convert USDC to {off['currency']} on {off['provider']}",
         "status": "completed",
         "timestamp_offset_minutes": offset,
         "duration_minutes": off["time_minutes"],
         "details": {
             "from": f"{off['provider']} USDC Wallet",
             "to": f"{off['provider']} {off['currency']} Wallet",
-            "usdc_amount": after_fee,
+            "usdc_amount": round(usdc_received - net["gas_fee_usd"] - off["fee_usd"], 2),
             "local_received": off["received_local"],
             "exchange_rate": off["exchange_rate"],
             "spread_pct": off["spread_pct"],
             "spread_usd": off["spread_usd"],
-            "fee_usd": off["fee_usd"],
-            "tx_hash": _mock_tx_hash(path_id, 3, "convert"),
+            "tx_hash": _mock_tx_hash(path_id, 5, "convert"),
         },
     })
     offset += off["time_minutes"]
 
-    # Step 4: Settlement to destination bank
+    # Step 6: Settlement to bank
     steps.append({
-        "step_number": 4,
+        "step_number": 6,
         "phase": "off_ramp",
-        "name": f"Send {off['currency']} to Recipient",
+        "name": f"Settle {off['currency']} to Destination Bank",
         "status": "completed",
         "timestamp_offset_minutes": offset,
         "duration_minutes": 2,
@@ -100,12 +134,13 @@ def simulate(path: dict, amount_usdc: float) -> dict:
             "to": "Recipient Bank Account",
             "amount": off["received_local"],
             "method": off["method"],
-            "tx_hash": _mock_tx_hash(path_id, 4, "settle"),
+            "tx_hash": _mock_tx_hash(path_id, 6, "settle"),
         },
     })
     offset += 2
 
-    total_fee = round(net["gas_fee_usd"] + off["fee_usd"] + off["spread_usd"], 2)
+    total_fee = round(
+        on["fee_usd"] + on["spread_usd"] + net["gas_fee_usd"] + off["fee_usd"] + off["spread_usd"], 2)
 
     return {
         "simulation_id": sim_id,
@@ -120,6 +155,6 @@ def simulate(path: dict, amount_usdc: float) -> dict:
             "local_currency": off["currency"],
             "usd_equivalent_received": round(off["received_local"] / off["exchange_rate"], 2),
             "effective_exchange_rate": off["exchange_rate"],
-            "value_loss_pct": round((total_fee / amount_usdc) * 100, 2),
+            "value_loss_pct": round((total_fee / amount) * 100, 2),
         },
     }

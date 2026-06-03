@@ -14,12 +14,13 @@ export default function SendMoneyPage() {
   const { isAuthenticated } = useApp();
   const [authOpen, setAuthOpen] = useState(false);
   const [amount, setAmount] = useState(500);
+  const [currency, setCurrency] = useState<"USDC" | "USDT">("USDC");
+  const [topUpAmount, setTopUpAmount] = useState(0);
+  const [needsTopUp, setNeedsTopUp] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quoteData, setQuoteData] = useState<QuoteResponse | null>(null);
   const [simulationData, setSimulationData] = useState<SimulateResponse | null>(null);
-
-  // Signing step state
   const [signingPath, setSigningPath] = useState<PathOption | null>(null);
 
   const handleQuote = (data: QuoteResponse) => {
@@ -30,9 +31,21 @@ export default function SendMoneyPage() {
   };
 
   const handleStartSimulate = (path: PathOption) => {
-    // Show signing step before calling API
+    // USDT mode: always require top-up (platform never holds funds)
+    if (currency === "USDT") {
+      setSigningPath(path);
+      setNeedsTopUp(true);
+      setTopUpAmount(amount);
+      setError(null);
+      return;
+    }
     setSigningPath(path);
+    setNeedsTopUp(false);
     setError(null);
+  };
+
+  const handleTopUpAndContinue = () => {
+    setNeedsTopUp(false);
   };
 
   const handleSigned = async (_signature: string) => {
@@ -52,6 +65,7 @@ export default function SendMoneyPage() {
 
   const handleCancelSign = () => {
     setSigningPath(null);
+    setNeedsTopUp(false);
   };
 
   // Guard: require a wallet
@@ -61,16 +75,10 @@ export default function SendMoneyPage() {
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Send Money</h2>
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-12 text-center space-y-4">
           <Wallet className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600" />
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Wallet Required</h3>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">
-              Create a smart wallet or connect your existing one to send money.
-            </p>
-          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Wallet Required</h3>
+          <p className="text-gray-500 dark:text-gray-400">Create a smart wallet or connect your existing one to send money.</p>
           <div className="flex items-center justify-center gap-3">
-            <button onClick={() => setAuthOpen(true)} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">
-              Create Wallet
-            </button>
+            <button onClick={() => setAuthOpen(true)} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">Create Wallet</button>
             <ConnectButton />
           </div>
         </div>
@@ -90,7 +98,7 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {!simulationData && !signingPath && (
+      {!simulationData && !signingPath && !needsTopUp && (
         <QuoteForm
           onResult={handleQuote}
           onError={setError}
@@ -98,6 +106,8 @@ export default function SendMoneyPage() {
           setIsLoading={setIsLoading}
           defaultAmount={amount}
           onAmountChange={setAmount}
+          currency={currency}
+          onCurrencyChange={setCurrency}
         />
       )}
 
@@ -112,7 +122,34 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {quoteData && !simulationData && !isLoading && !signingPath && (
+      {/* USDT top-up step — platform never holds funds, always requires deposit */}
+      {needsTopUp && signingPath && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-amber-500 p-6 space-y-4">
+          <h3 className="font-bold text-gray-900 dark:text-white">Deposit USDT</h3>
+          <p className="text-sm text-gray-500">
+            USDT transfers require a deposit. This platform never holds your funds — the deposit is simulated for demo purposes.
+          </p>
+          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Transfer amount:</span>
+              <span className="font-medium">${amount.toFixed(2)} USDT</span>
+            </div>
+          </div>
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Deposit Amount (USDT)</label>
+              <input type="number" min={1} step={1} value={topUpAmount} onChange={e => setTopUpAmount(Number(e.target.value))} className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none" />
+            </div>
+            <button onClick={handleTopUpAndContinue} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all">
+              Deposit
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">🧪 Simulated — no real funds used</p>
+          <button onClick={handleCancelSign} className="text-sm text-gray-500 hover:underline">Cancel</button>
+        </div>
+      )}
+
+      {quoteData && !simulationData && !isLoading && !signingPath && !needsTopUp && (
         <ResultsPanel
           data={quoteData}
           amount={amount}
@@ -121,8 +158,7 @@ export default function SendMoneyPage() {
         />
       )}
 
-      {/* Signing step — user signs with private key before simulation */}
-      {signingPath && (
+      {signingPath && !needsTopUp && (
         <SigningStep
           pathLabel={`${signingPath.on_ramp.provider} → ${signingPath.network.name} → ${signingPath.off_ramp.provider}`}
           amount={amount}
@@ -136,12 +172,8 @@ export default function SendMoneyPage() {
           data={simulationData}
           onBack={() => setSimulationData(null)}
           onHistory={async () => {
-            try {
-              const res = await api.getTransactions();
-              return res.transactions;
-            } catch {
-              return [];
-            }
+            try { const res = await api.getTransactions(); return res.transactions; }
+            catch { return []; }
           }}
         />
       )}

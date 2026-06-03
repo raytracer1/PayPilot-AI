@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { Wallet, Copy, Check, ExternalLink, ArrowDownUp, Shield } from "lucide-react";
+import { Wallet, Copy, Check, Shield } from "lucide-react";
 import { formatUSD } from "../utils/format";
 
 export default function WalletCenterPage() {
@@ -44,12 +44,7 @@ export default function WalletCenterPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <a href="https://buy.moonpay.com" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-blue-300 transition-colors group">
-          <ArrowDownUp className="w-5 h-5 text-blue-500" />
-          <div className="flex-1"><div className="font-medium text-sm text-gray-900 dark:text-white group-hover:text-blue-600">Buy USDC</div><div className="text-xs text-gray-500">MoonPay / Transak</div></div>
-          <ExternalLink className="w-4 h-4 text-gray-400" />
-        </a>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex items-center gap-3 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <Shield className="w-5 h-5 text-green-500" />
           <div><div className="font-medium text-sm text-gray-900 dark:text-white">Gas Sponsored</div><div className="text-xs text-gray-500">Free transfers on Base</div></div>
