@@ -1,5 +1,6 @@
-"""Transaction ORM model — minimal operational data only."""
+"""Transaction ORM model — minimal operational data, no personal identifiers."""
 
+import hashlib
 import uuid
 from datetime import datetime, timezone
 
@@ -12,12 +13,20 @@ def _tx_id() -> str:
     return f"tx_{uuid.uuid4().hex[:12]}"
 
 
+def hash_user(user_id: str) -> str:
+    """One-way hash of user ID for anonymous transaction linking."""
+    return hashlib.sha256(f"pp:tx:{user_id}".encode()).hexdigest()[:16]
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String, primary_key=True, default=_tx_id)
 
-    # Operational data — no personal identifiers
+    # Anonymous user link — one-way hash, cannot be reversed to user ID
+    user_hash = Column(String(16), nullable=False, index=True)
+
+    # Operational data
     path_id = Column(String(64), nullable=False)
     path_summary = Column(String(255), nullable=True)
     amount_usd = Column(Float, nullable=False)

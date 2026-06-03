@@ -1,4 +1,4 @@
-"""GET /api/transactions — operational history, no personal data."""
+"""GET /api/transactions — filtered to current user only."""
 
 import json
 
@@ -6,17 +6,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, hash_user
+from app.routers.auth import _get_user
 from app.schemas.transaction import TransactionRecord, TransactionListResponse
 
 router = APIRouter(prefix="/api", tags=["transactions"])
 
 
 @router.get("/transactions", response_model=TransactionListResponse)
-def list_transactions(db: Session = Depends(get_db)):
-    """Return past simulated transactions, newest first. No personal data."""
+def list_transactions(
+    db: Session = Depends(get_db),
+    current_user = Depends(_get_user),
+):
+    """Return past simulated transactions for the current user only."""
+    user_hash = hash_user(current_user.id) if current_user else "anon"
+
     txs = (
         db.query(Transaction)
+        .filter(Transaction.user_hash == user_hash)
         .order_by(Transaction.created_at.desc())
         .limit(50)
         .all()

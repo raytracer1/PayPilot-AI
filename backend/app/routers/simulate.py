@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.quote import Quote
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, hash_user
+from app.routers.auth import _get_user
 from app.schemas.simulate import SimulateRequest, SimulateResponse
 from app.services.simulator import simulate as run_simulation
 
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/api", tags=["simulate"])
 def simulate(
     request: SimulateRequest,
     db: Session = Depends(get_db),
+    current_user = Depends(_get_user),
 ):
     """Generate simulated transaction steps from a route path."""
     if not request.path_id.startswith("path_"):
@@ -53,6 +55,7 @@ def simulate(
     # Minimal operational record — no personal identifiers
     tx = Transaction(
         id=result["transaction_id"],
+        user_hash=hash_user(current_user.id) if current_user else "anon",
         path_id=request.path_id,
         path_summary=(
             f"{path_data['network']['name']} → "
