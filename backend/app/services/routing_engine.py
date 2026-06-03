@@ -82,9 +82,9 @@ def rank_paths(
         net = path["network"]
         off = path["off_ramp"]
 
-        # Total fees
-        total_fee = on["fee_usd"] + on["spread_usd"] + net["gas_fee_usd"] + off["fee_usd"] + off["spread_usd"]
-        total_time = on["time_minutes"] + net["time_minutes"] + off["time_minutes"]
+        # Total fees — on-ramp excluded (user already has USDC in wallet)
+        total_fee = net["gas_fee_usd"] + off["fee_usd"] + off["spread_usd"]
+        total_time = net["time_minutes"] + off["time_minutes"]
 
         # Filter by time limit
         if total_time > time_limit:
