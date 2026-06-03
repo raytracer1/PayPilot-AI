@@ -47,18 +47,26 @@ def simulate(path: dict, amount: float, skip_on_ramp: bool = False, skip_off_ram
         })
         offset += on_time
 
-        # Step: USD → USDC conversion
+        # Step: USD → USDC (mint or buy, depending on provider)
         step_num += 1
         usdc_amount = round(round(amount, 2) - on_fee - on_spread, 2)
+        is_issuer = "Circle" in on["provider"]
         steps.append({
             "step_number": step_num, "phase": "on_ramp",
-            "name": f"Convert USD to USDC on {on['provider']}", "status": "completed",
+            "name": (
+                f"Circle Mints {usdc_amount} USDC → Your Wallet"
+                if is_issuer else
+                f"{on['provider']} Buys USDC → Your Wallet"
+            ),
+            "status": "completed",
             "timestamp_offset_minutes": offset, "duration_minutes": 1,
             "details": {
-                "from": f"{on['provider']} USD Wallet",
-                "to": f"{on['provider']} USDC Wallet",
+                "from": f"{on['provider']} USD Balance",
+                "to": "Your Wallet",
                 "amount_usd": amount,
-                "usdc_received": usdc_amount, "rate": "1:1",
+                "usdc_received": usdc_amount,
+                "rate": "1:1",
+                "method": "Mint (on-chain)" if is_issuer else "Buy (exchange)",
                 "tx_hash": _mock_tx_hash(path_id, step_num, "convert"),
             },
         })
@@ -73,7 +81,7 @@ def simulate(path: dict, amount: float, skip_on_ramp: bool = False, skip_off_ram
         "name": f"Transfer USDC via {net['name']} Network", "status": "completed",
         "timestamp_offset_minutes": offset, "duration_minutes": net["time_minutes"],
         "details": {
-            "from": "Your Wallet" if skip_on_ramp else f"{on['provider']} USDC Wallet",
+            "from": "Your Wallet",
             "to": recipient,
             "network": net["name"], "layer": net["layer"],
             "gas_fee_usd": net["gas_fee_usd"],

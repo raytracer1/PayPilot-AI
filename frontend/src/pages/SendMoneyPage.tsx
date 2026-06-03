@@ -19,7 +19,6 @@ export default function SendMoneyPage() {
   const [preference, setPreference] = useState("balanced");
   const [currency, setCurrency] = useState<"USDC" | "USDT">("USDC");
   const [recipientType, setRecipientType] = useState<"bank" | "wallet">("bank");
-  const [showDeposit, setShowDeposit] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rawPaths, setRawPaths] = useState<PathOption[] | null>(null);
@@ -35,11 +34,11 @@ export default function SendMoneyPage() {
 
   const [simulationData, setSimulationData] = useState<SimulateResponse | null>(null);
   const [signingPath, setSigningPath] = useState<PathOption | null>(null);
+  const [collectInfo, setCollectInfo] = useState(false);
 
   const clearResults = () => {
     setRawPaths(null);
     setSimulationData(null);
-    setShowDeposit(false);
     setSigningPath(null);
     setError(null);
   };
@@ -50,15 +49,18 @@ export default function SendMoneyPage() {
     setRawPaths(data.paths);
     setTotalEvaluated(data.meta.total_paths_evaluated);
     setSimulationData(null);
-    setShowDeposit(false);
     setSigningPath(null);
     setError(null);
   };
 
   const handleSend = (path: PathOption) => {
-    // Testnet: always fund wallet from faucet before signing
-    setSigningPath(path);
-    setShowDeposit(true);
+    // USDT: collect on-ramp info first. USDC: skip (already in wallet).
+    if (currency === "USDT" && path.on_ramp) {
+      setSigningPath(path);
+      setCollectInfo(true);
+    } else {
+      setSigningPath(path);
+    }
     setError(null);
   };
 
@@ -80,7 +82,6 @@ export default function SendMoneyPage() {
 
   const handleCancelSign = () => {
     setSigningPath(null);
-    setShowDeposit(false);
   };
 
   // Guard: require a wallet
@@ -113,7 +114,7 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {!simulationData && !signingPath && !showDeposit && (
+      {!simulationData && !signingPath && (
         <QuoteForm
           onResult={handleQuote}
           onError={setError}
@@ -140,18 +141,7 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {/* Deposit step — identical to production UI, backend uses testnet */}
-      {showDeposit && signingPath && (
-        <DepositStep
-          amount={amount}
-          currency={currency}
-          onRampMethod={signingPath.on_ramp ? `${signingPath.on_ramp.provider} — ${signingPath.on_ramp.method}` : "Wallet"}
-          onComplete={() => setShowDeposit(false)}
-          onCancel={handleCancelSign}
-        />
-      )}
-
-      {sortedPaths && !simulationData && !isLoading && !signingPath && !showDeposit && (
+      {sortedPaths && !simulationData && !isLoading && !signingPath && (
         <ResultsPanel
           paths={sortedPaths}
           totalEvaluated={totalEvaluated}
@@ -163,7 +153,18 @@ export default function SendMoneyPage() {
         />
       )}
 
-      {signingPath && !showDeposit && (
+      {/* USDT: collect on-ramp info */}
+      {collectInfo && signingPath && signingPath.on_ramp && (
+        <DepositStep
+          amount={amount}
+          currency={currency}
+          onRampMethod={`${signingPath.on_ramp.provider} — ${signingPath.on_ramp.method}`}
+          onComplete={() => setCollectInfo(false)}
+          onCancel={() => { setCollectInfo(false); setSigningPath(null); }}
+        />
+      )}
+
+      {signingPath && !collectInfo && (
         <SigningStep
           pathLabel={signingPath.off_ramp
             ? (signingPath.on_ramp
