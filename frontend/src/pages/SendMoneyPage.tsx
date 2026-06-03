@@ -2,7 +2,8 @@ import { useState } from "react";
 import QuoteForm from "../components/Form/QuoteForm";
 import ResultsPanel from "../components/Results/ResultsPanel";
 import SimulationPanel from "../components/Simulation/SimulationPanel";
-import type { QuoteResponse, SimulateResponse, TransactionRecord } from "../types/api";
+import SigningStep from "../components/Simulation/SigningStep";
+import type { QuoteResponse, SimulateResponse, PathOption } from "../types/api";
 import { api } from "../api/client";
 
 export default function SendMoneyPage() {
@@ -12,15 +13,39 @@ export default function SendMoneyPage() {
   const [quoteData, setQuoteData] = useState<QuoteResponse | null>(null);
   const [simulationData, setSimulationData] = useState<SimulateResponse | null>(null);
 
+  // Signing step state
+  const [signingPath, setSigningPath] = useState<PathOption | null>(null);
+
   const handleQuote = (data: QuoteResponse) => {
     setQuoteData(data);
     setSimulationData(null);
+    setSigningPath(null);
     setError(null);
   };
 
-  const handleSimulate = async (data: SimulateResponse) => {
-    setSimulationData(data);
+  const handleStartSimulate = (path: PathOption) => {
+    // Show signing step before calling API
+    setSigningPath(path);
     setError(null);
+  };
+
+  const handleSigned = async (_signature: string) => {
+    if (!signingPath) return;
+    setSigningPath(null);
+    setError(null);
+    try {
+      const result = await api.simulate({
+        path_id: signingPath.id,
+        amount_usd: amount,
+      });
+      setSimulationData(result);
+    } catch (err: any) {
+      setError(err.message || "Simulation failed");
+    }
+  };
+
+  const handleCancelSign = () => {
+    setSigningPath(null);
   };
 
   return (
@@ -34,7 +59,7 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {!simulationData && (
+      {!simulationData && !signingPath && (
         <QuoteForm
           onResult={handleQuote}
           onError={setError}
@@ -56,12 +81,22 @@ export default function SendMoneyPage() {
         </div>
       )}
 
-      {quoteData && !simulationData && !isLoading && (
+      {quoteData && !simulationData && !isLoading && !signingPath && (
         <ResultsPanel
           data={quoteData}
           amount={amount}
-          onSimulate={handleSimulate}
+          onSimulate={handleStartSimulate}
           onError={setError}
+        />
+      )}
+
+      {/* Signing step — user signs with private key before simulation */}
+      {signingPath && (
+        <SigningStep
+          pathLabel={`${signingPath.on_ramp.provider} → ${signingPath.network.name} → ${signingPath.off_ramp.provider}`}
+          amount={amount}
+          onSigned={handleSigned}
+          onCancel={handleCancelSign}
         />
       )}
 

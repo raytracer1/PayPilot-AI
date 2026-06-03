@@ -1,12 +1,11 @@
 import { useState } from "react";
-import type { QuoteResponse, PathOption, SimulateResponse } from "../../types/api";
-import { api } from "../../api/client";
+import type { QuoteResponse, PathOption } from "../../types/api";
 import PathCard from "./PathCard";
 
 interface ResultsPanelProps {
   data: QuoteResponse;
   amount: number;
-  onSimulate: (data: SimulateResponse) => void;
+  onSimulate: (path: PathOption) => void;
   onError: (msg: string) => void;
 }
 
@@ -20,20 +19,10 @@ export default function ResultsPanel({
   const destinationCountry =
     data.paths[0]?.off_ramp?.currency === "MXN"
       ? "MX"
-      : "BR"; // Extract from path context; fallback OK for demo
+      : "BR";
 
-  const handleSimulate = async (path: PathOption) => {
-    try {
-      const result = await api.simulate({
-        path_id: path.id,
-        amount_usd: amount,
-      });
-      onSimulate(result);
-    } catch (err) {
-      onError(
-        err instanceof Error ? err.message : "Simulation failed"
-      );
-    }
+  const handleSimulate = (path: PathOption) => {
+    onSimulate(path);
   };
 
   return (
