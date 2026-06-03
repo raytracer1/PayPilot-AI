@@ -30,16 +30,6 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null);
 
 /* ─── Helpers ─── */
-function deriveSmartWallet(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) {
-    hash = ((hash << 5) - hash) + userId.charCodeAt(i);
-    hash |= 0;
-  }
-  const hex = Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
-  return `0x${hex}`;
-}
-
 function saveSession(token: string, user: UserInfo) {
   localStorage.setItem("pp_token", token);
   localStorage.setItem("pp_user", JSON.stringify(user));
@@ -67,24 +57,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // BYO wallet via wagmi (RainbowKit handles connect/disconnect UI)
   const { address: byoAddress, isConnected: isByoConnected } = useAccount();
 
-  // Email auth (simulated for demo)
-  const login = useCallback(async (email: string, _password: string) => {
-    // Simulate API call — accept any email/password in demo
-    const id = "usr_" + btoa(email).slice(0, 16);
-    const u: UserInfo = { id, email, displayName: email.split("@")[0], smartWallet: deriveSmartWallet(id) };
-    const t = "pp_jwt_" + btoa(id + Date.now());
+  // Email auth (backend with database)
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Login failed");
+    }
+    const data = await res.json();
+    const u: UserInfo = { id: data.user.id, email: data.user.email, displayName: data.user.display_name, smartWallet: data.user.smart_wallet };
     setUser(u);
-    setToken(t);
-    saveSession(t, u);
+    setToken(data.token);
+    saveSession(data.token, u);
   }, []);
 
-  const register = useCallback(async (email: string, _password: string, name?: string) => {
-    const id = "usr_" + btoa(email + Date.now()).slice(0, 16);
-    const u: UserInfo = { id, email, displayName: name || email.split("@")[0], smartWallet: deriveSmartWallet(id) };
-    const t = "pp_jwt_" + btoa(id + Date.now());
+  const register = useCallback(async (email: string, password: string, name?: string) => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, display_name: name || email.split("@")[0] }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Registration failed");
+    }
+    const data = await res.json();
+    const u: UserInfo = { id: data.user.id, email: data.user.email, displayName: data.user.display_name, smartWallet: data.user.smart_wallet };
     setUser(u);
-    setToken(t);
-    saveSession(t, u);
+    setToken(data.token);
+    saveSession(data.token, u);
   }, []);
 
   const logout = useCallback(() => {
@@ -98,12 +103,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const walletType = isByoConnected && byoAddress ? "byo" : user ? "smart" : null;
   const isAuthenticated = !!user;
 
-  // Verify token on mount
+  // Verify token against backend on mount
   useEffect(() => {
     const saved = loadSession();
-    if (saved.token && saved.user) {
-      setToken(saved.token);
-      setUser(saved.user);
+    const t = saved.token;
+    if (t) {
+      fetch("/api/auth/me", {
+        headers: { Authorization: `Bearer ${t}` },
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("expired");
+          return res.json();
+        })
+        .then((data) => {
+          const u: UserInfo = { id: data.user.id, email: data.user.email, displayName: data.user.display_name, smartWallet: data.user.smart_wallet };
+          setUser(u);
+          setToken(t);
+          saveSession(t, u);
+        })
+        .catch(() => clearSession());
     }
   }, []);
 

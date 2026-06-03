@@ -5,7 +5,7 @@ Supports both Smart Wallet (Clerk) and BYO Wallet (wagmi).
 
 from fastapi import APIRouter, Depends, Query
 
-from app.clerk_auth import get_clerk_user
+from app.routers.auth import _get_user
 from app.services.wallet_abstraction import get_unified_wallet
 from app.services.onchain import get_recent_transfers
 
@@ -16,11 +16,11 @@ router = APIRouter(prefix="/api/wallet", tags=["wallet"])
 def unified_wallet(
     chain_id: str = Query("8453"),
     wallet_address: str = Query(None, description="BYO wallet address"),
-    clerk_user: dict | None = Depends(get_clerk_user),
+    current_user = Depends(_get_user),
 ):
     """Return unified wallet object from either Smart Wallet or BYO Wallet."""
     result = get_unified_wallet(
-        clerk_user_id=clerk_user["user_id"] if clerk_user else None,
+        clerk_user_id=current_user.id if current_user else None,
         wallet_address=wallet_address,
         chain_id=chain_id,
     )
@@ -33,11 +33,11 @@ def unified_wallet(
 def wallet_balance(
     chain_id: str = Query("8453"),
     wallet_address: str = Query(None),
-    clerk_user: dict | None = Depends(get_clerk_user),
+    current_user = Depends(_get_user),
 ):
     """Return USDC balance from either wallet type."""
     wallet = get_unified_wallet(
-        clerk_user_id=clerk_user["user_id"] if clerk_user else None,
+        clerk_user_id=current_user.id if current_user else None,
         wallet_address=wallet_address,
         chain_id=chain_id,
     )
@@ -55,11 +55,11 @@ def wallet_balance(
 def wallet_transactions(
     limit: int = Query(10, le=50),
     wallet_address: str = Query(None),
-    clerk_user: dict | None = Depends(get_clerk_user),
+    current_user = Depends(_get_user),
 ):
     """Return recent USDC transfers for the wallet."""
     wallet = get_unified_wallet(
-        clerk_user_id=clerk_user["user_id"] if clerk_user else None,
+        clerk_user_id=current_user.id if current_user else None,
         wallet_address=wallet_address,
     )
     if wallet is None:
