@@ -18,12 +18,10 @@ export default function TransactionRow({ tx }: TransactionRowProps) {
             <span className="text-sm font-mono text-gray-400">{tx.id}</span>
             <span
               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                tx.status === "completed"
-                  ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                  : "bg-yellow-100 text-yellow-700"
+                "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
               }`}
             >
-              {tx.status}
+              completed
             </span>
           </div>
           {tx.selected_path_summary && (

@@ -127,7 +127,6 @@ export interface TransactionRecord {
   amount_usd: number;
   destination_country: string;
   speed_preference: string;
-  status: string;
   total_fee_usd: number;
   total_time_minutes: number;
   received_local: number;

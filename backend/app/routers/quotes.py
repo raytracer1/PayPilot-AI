@@ -3,7 +3,7 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -21,11 +21,9 @@ router = APIRouter(prefix="/api", tags=["quotes"])
 def get_quote(
     request: QuoteRequest,
     db: Session = Depends(get_db),
-    req: Request = None,
     current_user = Depends(_get_user),
 ):
     """Analyze all possible routing paths and return the top 5 ranked by AI scoring."""
-    client_ip = req.client.host if req else None
 
     # Validate country
     if request.destination_country not in SUPPORTED_COUNTRIES:
@@ -79,7 +77,7 @@ def get_quote(
     log_event(
         db,
         event_type="quote_requested",
-        actor=current_user.email if current_user else "anonymous",
+        actor="anonymous",
         amount_usd=request.amount_usd,
         destination_country=request.destination_country,
         speed_preference=request.speed_preference,
@@ -95,7 +93,6 @@ def get_quote(
             "top_score": top_path["total_score"],
             "top_fee_usd": top_path["summary"]["total_fee_usd"],
         }),
-        client_ip=client_ip,
     )
 
     return QuoteResponse(

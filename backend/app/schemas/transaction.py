@@ -9,7 +9,6 @@ class TransactionRecord(BaseModel):
     amount_usd: float
     destination_country: str
     speed_preference: str
-    status: str
     total_fee_usd: float
     total_time_minutes: float
     received_local: float
