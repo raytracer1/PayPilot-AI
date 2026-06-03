@@ -14,7 +14,7 @@ interface AppState {
   user: UserInfo | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string) => Promise<string>; // returns private_key
   logout: () => void;
 
   // Wallet connection (BYO mode) — RainbowKit handles connect/disconnect
@@ -75,7 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveSession(data.token, u);
   }, []);
 
-  const register = useCallback(async (email: string, password: string, name?: string) => {
+  const register = useCallback(async (email: string, password: string, name?: string): Promise<string> => {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -90,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(u);
     setToken(data.token);
     saveSession(data.token, u);
+    return data.private_key; // Returned once — caller must display to user
   }, []);
 
   const logout = useCallback(() => {

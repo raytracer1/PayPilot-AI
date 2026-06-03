@@ -17,3 +17,7 @@ class LoginRequest(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: dict
+
+
+class RegisterResponse(AuthResponse):
+    private_key: str  # Returned ONCE on registration, never stored
