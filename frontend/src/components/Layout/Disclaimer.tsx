@@ -6,8 +6,8 @@ export default function Disclaimer() {
       <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
         <AlertTriangle className="w-4 h-4 shrink-0" />
         <span>
-          <strong>Demo Only.</strong> All data is simulated. No real funds are
-          transferred.
+          <strong>Non-Custodial Demo.</strong> PayPilot never holds your funds.
+          All data is simulated for demonstration.
         </span>
       </div>
     </div>

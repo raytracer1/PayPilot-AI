@@ -18,7 +18,7 @@ class ApiError extends Error {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  const token = localStorage.getItem("paypilot_token");
+  const token = localStorage.getItem("paypilot_siwe_token");
   if (token) {
     return { Authorization: `Bearer ${token}` };
   }

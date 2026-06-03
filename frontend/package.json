@@ -9,10 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.0",
+    "@wagmi/connectors": "^8.0.15",
+    "@wagmi/core": "^3.5.0",
     "d3": "^7.9.0",
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "viem": "^2.52.0",
+    "wagmi": "^3.6.16"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

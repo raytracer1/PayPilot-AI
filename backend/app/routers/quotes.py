@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.quote import Quote
 from app.models.audit_log import log_event
-from app.models.user import User
-from app.auth import get_current_user
+from app.models.wallet_user import WalletUser
+from app.auth import get_wallet_user
 from app.schemas.quote import QuoteRequest, QuoteResponse, QuoteMeta
 from app.services import path_analyzer, routing_engine
 from app.utils.constants import SUPPORTED_COUNTRIES
@@ -23,7 +23,7 @@ def get_quote(
     request: QuoteRequest,
     db: Session = Depends(get_db),
     req: Request = None,
-    current_user: User | None = Depends(get_current_user),
+    current_user: WalletUser | None = Depends(get_wallet_user),
 ):
     """Analyze all possible routing paths and return the top 5 ranked by AI scoring."""
     client_ip = req.client.host if req else None
@@ -80,7 +80,7 @@ def get_quote(
     log_event(
         db,
         event_type="quote_requested",
-        actor=current_user.email if current_user else "anonymous",
+        actor=current_user.wallet_address if current_user else "anonymous",
         amount_usd=request.amount_usd,
         destination_country=request.destination_country,
         speed_preference=request.speed_preference,

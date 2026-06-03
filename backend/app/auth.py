@@ -1,6 +1,9 @@
-"""JWT authentication utilities and FastAPI dependency."""
+"""JWT authentication utilities and FastAPI dependency — v4 wallet-based.
 
-import os
+Authentication via SIWE (Sign-In with Ethereum): wallet signs a message,
+the server verifies it and issues a JWT session token.
+"""
+
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -8,22 +11,22 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
-from app.models.user import User
+from app.models.wallet_user import WalletUser
 
-# In production, use a secure random key stored in env/secrets manager
-SECRET_KEY = os.environ.get("PAYPILOT_JWT_SECRET", "paypilot-dev-secret-key-change-in-prod")
+SECRET_KEY = settings.jwt_secret
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 security_scheme = HTTPBearer(auto_error=False)
 
 
-def create_access_token(user_id: str, email: str) -> str:
-    """Create a JWT access token for the given user."""
+def create_access_token(user_id: str, identifier: str) -> str:
+    """Create a JWT access token for the given wallet user."""
     payload = {
         "sub": user_id,
-        "email": email,
+        "wallet": identifier,  # wallet address as the user identifier
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS),
     }
@@ -40,11 +43,11 @@ def decode_access_token(token: str) -> dict | None:
         return None
 
 
-def get_current_user(
+def get_wallet_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
     db: Session = Depends(get_db),
-) -> User | None:
-    """FastAPI dependency: extract and validate current user from Bearer token.
+) -> WalletUser | None:
+    """FastAPI dependency: extract and validate wallet user from Bearer token.
 
     Returns None if no token provided (allows unauthenticated access for demo).
     Raises 401 if token is invalid.
@@ -59,23 +62,23 @@ def get_current_user(
             detail="Invalid or expired token",
         )
 
-    user = db.query(User).filter(User.id == payload["sub"]).first()
+    user = db.query(WalletUser).filter(WalletUser.id == payload["sub"]).first()
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
+            detail="Wallet user not found or inactive",
         )
 
     return user
 
 
-def require_user(
-    user: User | None = Depends(get_current_user),
-) -> User:
-    """FastAPI dependency: require authenticated user. Raises 401 if not logged in."""
+def require_wallet(
+    user: WalletUser | None = Depends(get_wallet_user),
+) -> WalletUser:
+    """FastAPI dependency: require authenticated wallet. Raises 401 if not logged in."""
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required",
+            detail="Authentication required — please connect your wallet",
         )
     return user

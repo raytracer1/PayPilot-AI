@@ -7,7 +7,7 @@ export default function Footer() {
           transactions are executed.
         </p>
         <p>
-          PayPilot AI v3 · Secure Payment Orchestration · Not financial advice · Do not use with real funds
+          PayPilot AI v4 · Non-Custodial Payment Routing · Platform never holds user funds · Not financial advice
         </p>
       </div>
     </footer>

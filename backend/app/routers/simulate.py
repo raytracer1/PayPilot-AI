@@ -10,8 +10,8 @@ from app.database import get_db
 from app.models.transaction import Transaction
 from app.models.quote import Quote
 from app.models.audit_log import log_event
-from app.models.user import User
-from app.auth import get_current_user
+from app.models.wallet_user import WalletUser
+from app.auth import get_wallet_user
 from app.schemas.simulate import SimulateRequest, SimulateResponse
 from app.services.simulator import simulate as run_simulation
 
@@ -23,7 +23,7 @@ def simulate(
     request: SimulateRequest,
     db: Session = Depends(get_db),
     req: Request = None,
-    current_user: User | None = Depends(get_current_user),
+    current_user: WalletUser | None = Depends(get_wallet_user),
 ):
     """Simulate a transaction along the chosen path. No real funds moved.
 
@@ -59,22 +59,9 @@ def simulate(
             detail="Path not found. Please request a quote first, then simulate from results.",
         )
 
-    # Balance check + deduction (when authenticated)
-    if current_user:
-        if (current_user.balance_usd or 0) < request.amount_usd:
-            raise HTTPException(
-                status_code=402,
-                detail=(
-                    f"Insufficient balance. You have ${current_user.balance_usd:.2f}, "
-                    f"but need ${request.amount_usd:.2f}. Please deposit more funds."
-                ),
-            )
-        # Deduct from balance
-        current_user.balance_usd = round(
-            (current_user.balance_usd or 0) - request.amount_usd, 2
-        )
-        db.commit()
-        db.refresh(current_user)
+    # Non-custodial: the platform never holds funds.
+    # In production, the user signs a transaction in their wallet which sends
+    # USDC directly to the on-ramp provider. Here we simulate that flow.
 
     # Run simulation
     result = run_simulation(path=path_data, amount_usd=request.amount_usd)
@@ -88,7 +75,7 @@ def simulate(
     # Persist transaction
     tx = Transaction(
         id=result["transaction_id"],
-        user_id=current_user.id if current_user else None,
+        wallet_address=current_user.wallet_address if current_user else None,
         amount_usd=request.amount_usd,
         destination_country=recent_quote.destination_country,
         speed_preference=recent_quote.speed_preference,
@@ -111,7 +98,7 @@ def simulate(
     log_event(
         db,
         event_type="simulation_run",
-        actor=current_user.email if current_user else "anonymous",
+        actor=current_user.wallet_address if current_user else "anonymous",
         amount_usd=request.amount_usd,
         destination_country=recent_quote.destination_country,
         speed_preference=recent_quote.speed_preference,

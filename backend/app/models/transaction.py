@@ -20,7 +20,9 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String, primary_key=True, default=_tx_id)
-    user_id = Column(String, nullable=True, index=True)  # FK to users.id (optional for demo)
+    wallet_address = Column(String(42), nullable=True, index=True)
+    # User's wallet address — the platform never holds the private key
+
     amount_usd = Column(Float, nullable=False)
     destination_country = Column(String(2), nullable=False)
     speed_preference = Column(String(20), nullable=False)
@@ -29,6 +31,12 @@ class Transaction(Base):
     selected_path_id = Column(String(64), nullable=False)
     simulation_id = Column(String(64), unique=True, nullable=False, default=_sim_id)
     status = Column(String(20), default="completed")
+
+    # On-chain transaction details (populated in v4, empty in simulation mode)
+    tx_hash = Column(String(66), nullable=True)   # 0x + 64 hex chars
+    chain_id = Column(String(20), nullable=True)  # e.g. "8453" for Base
+    gas_used = Column(String(20), nullable=True)
+
     total_fee_usd = Column(Float, nullable=False)
     total_time_minutes = Column(Float, nullable=False)
     received_local = Column(Float, nullable=False)

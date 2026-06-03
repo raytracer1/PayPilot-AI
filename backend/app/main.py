@@ -1,4 +1,4 @@
-"""FastAPI application factory — PayPilot AI v3.
+"""FastAPI application factory — PayPilot AI v4.
 
 Security architecture:
 - No private keys stored in this application.
@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import quotes, simulate, transactions, info, audit, auth, account
+from app.routers import quotes, simulate, transactions, info, audit, siwe, wallet
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -28,8 +28,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Cache-Control"] = "no-store"
         # Mark all responses as simulated
-        response.headers["X-PayPilot-Mode"] = "SIMULATION"
-        response.headers["X-PayPilot-Disclaimer"] = "Demo only. No real funds."
+        response.headers["X-PayPilot-Mode"] = "NON-CUSTODIAL"
+        response.headers["X-PayPilot-Disclaimer"] = "Platform never holds user funds. Demo only."
         return response
 
 
@@ -37,11 +37,11 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         description=(
-            "Secure AI-powered cross-border payment orchestration engine "
-            "for LATAM remittances. Simulation-first design — no real funds "
-            "are ever custodied by this application."
+            "Non-custodial AI-powered cross-border payment routing system. "
+            "Orchestrates USD→USDC conversion and cross-border routing via "
+            "third-party providers. The platform never holds or controls user funds."
         ),
-        version="3.0.0",
+        version="4.0.0",
     )
 
     # Security headers (applied first — outermost layer)
@@ -62,8 +62,8 @@ def create_app() -> FastAPI:
     app.include_router(transactions.router)
     app.include_router(info.router)
     app.include_router(audit.router)
-    app.include_router(auth.router)
-    app.include_router(account.router)
+    app.include_router(siwe.router)
+    app.include_router(wallet.router)
 
     @app.on_event("startup")
     def on_startup():

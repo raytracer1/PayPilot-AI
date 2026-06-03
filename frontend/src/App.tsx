@@ -6,14 +6,14 @@ import QuoteForm from "./components/Form/QuoteForm";
 import ResultsPanel from "./components/Results/ResultsPanel";
 import SimulationPanel from "./components/Simulation/SimulationPanel";
 import HistoryPanel from "./components/History/HistoryPanel";
-import DepositPage from "./components/Account/DepositPage";
+import WalletPage from "./components/Wallet/WalletPage";
 import type {
   QuoteResponse,
   SimulateResponse,
   TransactionRecord,
 } from "./types/api";
 
-type View = "form" | "results" | "simulation" | "history" | "deposit";
+type View = "form" | "results" | "simulation" | "history" | "wallet";
 
 export default function App() {
   const [view, setView] = useState<View>("form");
@@ -71,7 +71,7 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950 transition-colors">
       <Header
         onNewQuote={handleNewQuote}
-        onDeposit={() => setView("deposit")}
+        onWallet={() => setView("wallet")}
       />
 
       <Disclaimer />
@@ -93,11 +93,11 @@ export default function App() {
           </div>
         )}
 
-        {/* Deposit page */}
-        {view === "deposit" && <DepositPage />}
+        {/* Wallet page */}
+        {view === "wallet" && <WalletPage />}
 
-        {/* Quote Form — always visible unless viewing simulation/history/deposit */}
-        {view !== "simulation" && view !== "history" && view !== "deposit" && (
+        {/* Quote Form — always visible unless viewing simulation/history/wallet */}
+        {view !== "simulation" && view !== "history" && view !== "wallet" && (
           <QuoteForm
             onResult={handleQuoteResult}
             onError={setError}
