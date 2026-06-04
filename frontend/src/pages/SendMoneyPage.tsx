@@ -9,6 +9,7 @@ import AuthModal from "../components/Auth/AuthModal";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import type { QuoteResponse, SimulateResponse, PathOption, ScoredPath } from "../types/api";
 import { sortPaths } from "../utils/sortPaths";
+import { fundUserWallet } from "../utils/fundWallet";
 import { api } from "../api/client";
 import { Wallet } from "lucide-react";
 
@@ -33,8 +34,11 @@ export default function SendMoneyPage() {
   const handlePreferenceChange = (pref: string) => setPreference(pref);
 
   const [simulationData, setSimulationData] = useState<SimulateResponse | null>(null);
+  const { walletAddress } = useApp();
   const [signingPath, setSigningPath] = useState<PathOption | null>(null);
   const [collectInfo, setCollectInfo] = useState(false);
+  const [funding, setFunding] = useState(false);
+  const [fundingTx, setFundingTx] = useState<string | null>(null);
 
   const clearResults = () => {
     setRawPaths(null);
@@ -54,30 +58,47 @@ export default function SendMoneyPage() {
   };
 
   const handleSend = (path: PathOption) => {
-    // USDT: collect on-ramp info first. USDC: skip (already in wallet).
+    // USDT: collect on-ramp info first. USDC: fund then sign.
     if (currency === "USDT" && path.on_ramp) {
       setSigningPath(path);
       setCollectInfo(true);
     } else {
+      // USDC: fund wallet from dev wallet, then sign
       setSigningPath(path);
+      if (walletAddress) {
+        setFunding(true);
+        fundUserWallet(walletAddress, amount).then((result) => {
+          setFunding(false);
+          if ("txHash" in result) setFundingTx(result.txHash);
+        });
+      }
     }
     setError(null);
   };
 
-  const handleSigned = async (_signature: string) => {
-    if (!signingPath) return;
+  const handleSigned = async (signedTx: string, txHash: string | null) => {
     setSigningPath(null);
     setError(null);
-    try {
-      const result = await api.simulate({
-        path_id: signingPath.id,
-        amount_usd: amount,
-        skip_on_ramp: currency === "USDC",
-      });
-      setSimulationData(result);
-    } catch (err: any) {
-      setError(err.message || "Simulation failed");
-    }
+    setSimulationData({
+      simulation_id: txHash || signedTx.slice(0, 20),
+      transaction_id: txHash || signedTx.slice(0, 20),
+      status: "completed",
+      path_snapshot: signingPath!,
+      steps: [{
+        step_number: 1, phase: "network", name: "Transaction Broadcast", status: "completed",
+        timestamp_offset_minutes: 0, duration_minutes: 1,
+        details: {
+          network: "Base Sepolia",
+          tx_hash: txHash || signedTx.slice(0, 20) + "...",
+          explorer_url: txHash ? `https://sepolia.basescan.org/tx/${txHash}` : "",
+        },
+      }],
+      summary: {
+        total_fee_usd: 0, total_time_minutes: 1,
+        final_amount_local: amount, local_currency: currency,
+        usd_equivalent_received: amount, effective_exchange_rate: 1, value_loss_pct: 0,
+      },
+    } as any);
   };
 
   const handleCancelSign = () => {
@@ -159,12 +180,35 @@ export default function SendMoneyPage() {
           amount={amount}
           currency={currency}
           onRampMethod={`${signingPath.on_ramp.provider} — ${signingPath.on_ramp.method}`}
-          onComplete={() => setCollectInfo(false)}
+          onComplete={async () => {
+            setCollectInfo(false);
+            if (walletAddress) {
+              setFunding(true);
+              const result = await fundUserWallet(walletAddress, amount);
+              setFunding(false);
+              if ("txHash" in result) setFundingTx(result.txHash);
+            }
+          }}
           onCancel={() => { setCollectInfo(false); setSigningPath(null); }}
         />
       )}
 
-      {signingPath && !collectInfo && (
+      {/* Funding from dev wallet */}
+      {funding && (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-6 text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
+          <h3 className="font-bold text-gray-900 dark:text-white">Funding Wallet</h3>
+          <p className="text-sm text-gray-500">{amount} USDC on Base Sepolia from dev wallet</p>
+          <p className="text-xs text-gray-400 font-mono">{walletAddress?.slice(0,12)}...{walletAddress?.slice(-6)}</p>
+        </div>
+      )}
+      {fundingTx && !funding && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 text-sm text-green-700 dark:text-green-300 text-center">
+          ✅ Funded: <a href={`https://sepolia.basescan.org/tx/${fundingTx}`} target="_blank" rel="noopener noreferrer" className="underline font-mono text-xs">{fundingTx.slice(0, 16)}...</a>
+        </div>
+      )}
+
+      {signingPath && !collectInfo && !funding && (
         <SigningStep
           pathLabel={signingPath.off_ramp
             ? (signingPath.on_ramp
