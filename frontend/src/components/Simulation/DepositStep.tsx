@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Building2, Shield, Banknote, CheckCircle2, Lock, ChevronRight, ArrowLeft } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { usePlaidLink } from "react-plaid-link";
+import { Banknote, CheckCircle2 } from "lucide-react";
 
 interface Props {
   amount: number;
@@ -9,243 +10,167 @@ interface Props {
   onCancel: () => void;
 }
 
-const BANKS = [
-  "Chase", "Bank of America", "Wells Fargo", "Citibank", "US Bank",
-  "PNC Bank", "TD Bank", "Capital One", "Charles Schwab", "Ally Bank",
-];
-
-type Step = "method" | "bank" | "login" | "auth" | "done";
-
 export default function DepositStep({ amount, currency, onRampMethod, onComplete, onCancel }: Props) {
-  const [step, setStep] = useState<Step>("method");
-  const [selectedBank, setSelectedBank] = useState(BANKS[0]);
-  const [searchBank, setSearchBank] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [plaidAvailable, setPlaidAvailable] = useState(false);
+
   const providerName = onRampMethod.split(" — ")[0];
   const isOAuth = onRampMethod.includes("Coinbase") || onRampMethod.includes("Robinhood");
+  const isCard = onRampMethod.includes("Card") || onRampMethod.includes("Debit");
+  const needsPlaid = !isOAuth && !isCard;
 
-  const filteredBanks = BANKS.filter((b) =>
-    b.toLowerCase().includes(searchBank.toLowerCase())
-  );
+  // Fetch Plaid link token
+  useEffect(() => {
+    fetch("/api/plaid/create-link-token", { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.link_token) {
+          setLinkToken(data.link_token);
+          setPlaidAvailable(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
-  // Step: choose method (Plaid or manual)
-  if (step === "method") {
-    if (isOAuth) {
-      // OAuth: redirect to provider
-      return (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-8 text-center space-y-6">
-          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto">
-            <Banknote className="w-8 h-8 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Connect to {providerName}
-            </h3>
-            <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
-              You'll be redirected to {providerName} to log in and authorize a {currency} purchase of ${amount.toFixed(2)}. PayPilot never sees your credentials.
-            </p>
-          </div>
-          <div className="flex gap-2 justify-center">
-            <button onClick={onCancel} className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">
-              Cancel
-            </button>
-            <button onClick={() => setStep("done")} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">
-              Authorize with {providerName}
-            </button>
-          </div>
-        </div>
-      );
-    }
+  const onPlaidSuccess = useCallback(async (public_token: string) => {
+    await fetch(`/api/plaid/exchange-token?public_token=${public_token}`, { method: "POST" });
+    onComplete();
+  }, []);
 
-    // Non-OAuth: Plaid-style bank connection
+  const { open: openPlaid, ready: plaidLinkReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: (public_token) => onPlaidSuccess(public_token),
+  });
+
+  // OAuth flow (Coinbase, Robinhood)
+  if (isOAuth) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-6 space-y-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-8 text-center space-y-6">
+        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto">
+          <Banknote className="w-8 h-8 text-blue-600" />
+        </div>
         <div>
-          <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <Banknote className="w-5 h-5 text-blue-500" />
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            Connect to {providerName}
+          </h3>
+          <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
+            You'll be redirected to {providerName} to log in and authorize a {currency} purchase of ${amount.toFixed(2)}.
+          </p>
+        </div>
+        <div className="flex gap-2 justify-center">
+          <button onClick={onCancel} className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">
+            Cancel
+          </button>
+          <button onClick={() => onComplete()} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">
+            Authorize with {providerName}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Card payment (MoonPay, Transak): no bank login needed
+  if (isCard) {
+    return <CardPaymentStep amount={amount} currency={currency} providerName={providerName} onComplete={onComplete} onCancel={onCancel} />;
+  }
+
+  // Plaid Link for ACH/Wire methods (Circle, Binance)
+  if (needsPlaid && plaidAvailable && linkToken) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-8 text-center space-y-6">
+        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto">
+          <Banknote className="w-8 h-8 text-blue-600" />
+        </div>
+        <div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
             {onRampMethod}
           </h3>
-          <p className="text-sm text-gray-500 mt-1">
-            ${amount.toFixed(2)} → {currency}. Connect your bank via Plaid to authorize the ACH transfer.
+          <p className="text-sm text-gray-500 mt-2">
+            Connect your bank via Plaid to fund ${amount.toFixed(2)} {currency}.
           </p>
         </div>
 
-        <div className="space-y-2">
-          <button
-            onClick={() => setStep("bank")}
-            className="w-full flex items-center justify-between p-4 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">P</div>
-              <div className="text-left">
-                <div className="font-medium text-gray-900 dark:text-white">Connect with Plaid</div>
-                <div className="text-xs text-gray-500">Link your bank instantly · Secure · Encrypted</div>
-              </div>
-            </div>
-            <ChevronRight className="w-5 h-5 text-blue-500" />
-          </button>
-
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm text-left space-y-1 max-w-sm mx-auto">
+          <div className="flex justify-between"><span className="text-gray-600">Provider:</span><span className="font-medium">{providerName}</span></div>
+          <div className="flex justify-between"><span className="text-gray-600">Amount:</span><span className="font-medium">${amount.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-600">Fee:</span><span className="font-medium text-amber-600">~${(amount * 0.0003).toFixed(2)}</span></div>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-          <Shield className="w-4 h-4 shrink-0" />
-          Bank credentials go to Plaid/{providerName}, never to PayPilot.
-        </div>
+        <button
+          onClick={() => openPlaid()}
+          disabled={!plaidLinkReady}
+          className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700 disabled:opacity-50 transition-all shadow-md"
+        >
+          Connect Bank with Plaid
+        </button>
 
-        <button onClick={onCancel} className="w-full py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">
+        <p className="text-xs text-gray-400">
+          🔒 Plaid Sandbox — uses test credentials. No real bank access.
+        </p>
+
+        <button onClick={onCancel} className="text-sm text-gray-500 hover:underline">
           Cancel
         </button>
       </div>
     );
   }
 
-  // Step: Plaid — search bank
-  if (step === "bank") {
-    return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setStep("method")} className="text-gray-400 hover:text-gray-600">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h3 className="font-bold text-gray-900 dark:text-white">Select Your Bank</h3>
-            <p className="text-xs text-gray-500">Plaid connects to over 12,000 US banks.</p>
-          </div>
-        </div>
+  // Fallback: simulated bank connection for ACH/Wire (Plaid not configured)
+  if (needsPlaid) return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-8 text-center space-y-6">
+      <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto">
+        <Banknote className="w-8 h-8 text-blue-600" />
+      </div>
+      <div>
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{onRampMethod}</h3>
+        <p className="text-sm text-gray-500 mt-2">Plaid not configured. Using simulated bank connection.</p>
+      </div>
+      <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm text-left space-y-1 max-w-sm mx-auto">
+        <div className="flex justify-between"><span className="text-gray-600">Provider:</span><span className="font-medium">{providerName}</span></div>
+        <div className="flex justify-between"><span className="text-gray-600">Amount:</span><span className="font-medium">${amount.toFixed(2)}</span></div>
+      </div>
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300">
+        🧪 Demo: simulated bank connection. Set PLAID keys in .env for real Sandbox.
+      </div>
+      <div className="flex gap-2 justify-center">
+        <button onClick={onCancel} className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">Cancel</button>
+        <button onClick={() => onComplete()} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">Continue (Simulated)</button>
+      </div>
+    </div>
+  );
+}
 
-        <input
-          type="text"
-          value={searchBank}
-          onChange={(e) => setSearchBank(e.target.value)}
-          placeholder="Search banks..."
-          className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none"
-        />
-
-        <div className="max-h-48 overflow-y-auto space-y-0.5">
-          {filteredBanks.map((b) => (
-            <button
-              key={b}
-              onClick={() => { setSelectedBank(b); setStep("login"); }}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Building2 className="w-5 h-5 text-gray-400" />
-                <span className="text-sm font-medium text-gray-900 dark:text-white">{b}</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </button>
-          ))}
+function CardPaymentStep({ amount, currency, providerName, onComplete, onCancel }: {
+  amount: number; currency: string; providerName: string; onComplete: () => void; onCancel: () => void;
+}) {
+  const [card, setCard] = useState({ holder: "", number: "", expiry: "", cvv: "" });
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-6 space-y-4">
+      <div>
+        <h3 className="font-bold text-gray-900 dark:text-white">{providerName} — Card Payment</h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Enter your card details. In production, this is processed by {providerName}'s secure widget. PayPilot never stores card numbers.
+        </p>
+      </div>
+      <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm flex justify-between">
+        <span className="text-gray-500">Amount:</span>
+        <span className="font-bold">${amount.toFixed(2)} {currency}</span>
+      </div>
+      <div className="space-y-3">
+        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cardholder Name</label><input type="text" value={card.holder} onChange={e => setCard({...card, holder: e.target.value})} placeholder="John Doe" className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Card Number</label><input type="text" value={card.number} onChange={e => setCard({...card, number: e.target.value})} placeholder="4111 1111 1111 1111" className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono" /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expiry</label><input type="text" value={card.expiry} onChange={e => setCard({...card, expiry: e.target.value})} placeholder="12/28" className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+          <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CVV</label><input type="text" value={card.cvv} onChange={e => setCard({...card, cvv: e.target.value})} placeholder="123" className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" /></div>
         </div>
       </div>
-    );
-  }
-
-  // Step: Plaid — bank login
-  if (step === "login") {
-    return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setStep("bank")} className="text-gray-400 hover:text-gray-600">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h3 className="font-bold text-gray-900 dark:text-white">Log in to {selectedBank}</h3>
-            <p className="text-xs text-gray-500">Your credentials are encrypted and never stored by PayPilot.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 px-3 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-300">
-          <Lock className="w-4 h-4 shrink-0" />
-          Connection secured by Plaid. PayPilot cannot see your login.
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Online Banking Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder={`${selectedBank} username`}
-              className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-3 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={() => setStep("auth")}
-          className="w-full py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700"
-        >
-          Log In
-        </button>
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-2 text-xs text-amber-700 dark:text-amber-300">
+        🧪 Demo: card details not submitted. Production: processed by {providerName} widget.
       </div>
-    );
-  }
-
-  // Step: Plaid — authorize
-  if (step === "auth") {
-    return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-blue-500 p-8 text-center space-y-6">
-        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-        <div>
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-            Authorize ACH Transfer
-          </h3>
-          <p className="text-sm text-gray-500 mt-2">
-            {selectedBank} — Account ending in 1234
-          </p>
-        </div>
-
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm text-left space-y-1 max-w-sm mx-auto">
-          <div className="flex justify-between"><span className="text-gray-600">Amount:</span><span className="font-medium">${amount.toFixed(2)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-600">To:</span><span className="font-medium">{providerName}</span></div>
-          <div className="flex justify-between"><span className="text-gray-600">For:</span><span className="font-medium">{currency} Purchase</span></div>
-        </div>
-
-        <div className="text-xs text-gray-400">This authorization allows {providerName} to debit your account once. It does not grant ongoing access.</div>
-
-        <div className="flex gap-2 justify-center">
-          <button onClick={() => setStep("login")} className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">
-            Back
-          </button>
-          <button onClick={() => setStep("done")} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">
-            Authorize
-          </button>
-        </div>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg">Cancel</button>
+        <button onClick={onComplete} className="flex-1 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">Pay & Continue</button>
       </div>
-    );
-  }
-
-  // Step: done
-  if (step === "done") {
-    return (
-      <div className="bg-white dark:bg-gray-900 rounded-xl border-2 border-green-500 p-8 text-center space-y-4">
-        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-        <div>
-          <h3 className="text-lg font-bold text-green-700 dark:text-green-300">Bank Connected</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            ${amount.toFixed(2)} will be debited from your bank via {providerName}.
-          </p>
-          <p className="text-xs text-gray-400 mt-2">PayPilot never saw your bank credentials.</p>
-        </div>
-        <button onClick={onComplete} className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-purple-700">
-          Continue to Sign
-        </button>
-      </div>
-    );
-  }
-
-  // Should never reach here — all steps handled above
-  return null;
+    </div>
+  );
 }

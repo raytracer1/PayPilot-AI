@@ -13,7 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routers import quotes, simulate, transactions, info, audit, wallet, auth, faucet
+from app.routers import quotes, simulate, transactions, info, audit, wallet, auth, faucet, plaid
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -64,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(wallet.router)
     app.include_router(auth.router)
     app.include_router(faucet.router)
+    app.include_router(plaid.router)
 
     @app.on_event("startup")
     def on_startup():

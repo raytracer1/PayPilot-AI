@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     usdt_contract_base: str = "0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2"  # Mainnet
     usdt_contract_sepolia: str = "0x..."  # Base Sepolia USDT — update with deployed address
 
+    # Plaid (sandbox — free for development)
+    plaid_client_id: str = ""
+    plaid_secret: str = ""
+    plaid_env: str = "sandbox"  # sandbox | development | production
+
     # JWT secret for SIWE session tokens
     jwt_secret: str = "paypilot-dev-secret-change-in-prod"
 
@@ -38,7 +43,7 @@ class Settings(BaseSettings):
     debug: bool = True
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-    model_config = {"env_prefix": "PAYPILOT_"}
+    model_config = {"env_prefix": "PAYPILOT_", "env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 settings = Settings()
