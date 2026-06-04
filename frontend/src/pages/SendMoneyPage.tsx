@@ -4,12 +4,14 @@ import QuoteForm from "../components/Form/QuoteForm";
 import ResultsPanel from "../components/Results/ResultsPanel";
 import SimulationPanel from "../components/Simulation/SimulationPanel";
 import SigningStep from "../components/Simulation/SigningStep";
+import SettlementStep from "../components/Simulation/SettlementStep";
 import DepositStep from "../components/Simulation/DepositStep";
 import AuthModal from "../components/Auth/AuthModal";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import type { QuoteResponse, SimulateResponse, PathOption, ScoredPath } from "../types/api";
+import type { QuoteResponse, SimulateResponse, SimulationStep, PathOption, ScoredPath } from "../types/api";
 import { sortPaths } from "../utils/sortPaths";
 import { fundUserWallet } from "../utils/fundWallet";
+import { getExplorerUrl } from "../utils/chainConfig";
 import { api } from "../api/client";
 import { Wallet } from "lucide-react";
 
@@ -39,6 +41,7 @@ export default function SendMoneyPage() {
   const [collectInfo, setCollectInfo] = useState(false);
   const [funding, setFunding] = useState(false);
   const [fundingTx, setFundingTx] = useState<string | null>(null);
+  const [settlingPath, setSettlingPath] = useState<{ signedTx: string; txHash: string | null } | null>(null);
 
   const clearResults = () => {
     setRawPaths(null);
@@ -77,26 +80,91 @@ export default function SendMoneyPage() {
   };
 
   const handleSigned = async (signedTx: string, txHash: string | null) => {
+    const p = signingPath!;
+
+    // If path has an off-ramp, show settlement step first
+    if (p.off_ramp) {
+      setSettlingPath({ signedTx, txHash });
+      return;
+    }
+
+    // Direct wallet transfer — no off-ramp needed
     setSigningPath(null);
-    setError(null);
+    showSimulation(p, signedTx, txHash);
+  };
+
+  const handleSettled = () => {
+    const p = signingPath!;
+    const { signedTx, txHash } = settlingPath!;
+    setSigningPath(null);
+    setSettlingPath(null);
+    showSimulation(p, signedTx, txHash);
+  };
+
+  const showSimulation = (p: PathOption, signedTx: string, txHash: string | null) => {
+    const steps: SimulationStep[] = [];
+    let stepNum = 0;
+
+    // On-ramp step
+    if (p.on_ramp) {
+      steps.push({
+        step_number: ++stepNum, phase: "on_ramp", name: `${p.on_ramp.provider} — Deposit`,
+        status: "completed", timestamp_offset_minutes: 0, duration_minutes: p.on_ramp.time_minutes,
+        details: {
+          provider: p.on_ramp.provider,
+          method: p.on_ramp.method,
+          fee_usd: p.on_ramp.fee_usd,
+          spread_usd: p.on_ramp.spread_usd,
+        },
+      });
+    }
+
+    // Network step
+    steps.push({
+      step_number: ++stepNum, phase: "network", name: `${p.network.name} Transfer`,
+      status: "completed",
+      timestamp_offset_minutes: steps.reduce((s, st) => s + st.duration_minutes, 0),
+      duration_minutes: p.network.time_minutes,
+      details: {
+        network: p.network.name,
+        gas_fee_usd: p.network.gas_fee_usd,
+        tx_hash: txHash || signedTx.slice(0, 20) + "...",
+        explorer_url: txHash ? getExplorerUrl(txHash) : "",
+      },
+    });
+
+    // Off-ramp step
+    if (p.off_ramp) {
+      steps.push({
+        step_number: ++stepNum, phase: "off_ramp", name: `${p.off_ramp.provider} — Settlement`,
+        status: "completed",
+        timestamp_offset_minutes: steps.reduce((s, st) => s + st.duration_minutes, 0),
+        duration_minutes: p.off_ramp.time_minutes,
+        details: {
+          provider: p.off_ramp.provider,
+          method: p.off_ramp.method,
+          fee_usd: p.off_ramp.fee_usd,
+          spread_usd: p.off_ramp.spread_usd,
+          received_local: p.off_ramp.received_local,
+          currency: p.off_ramp.currency,
+        },
+      });
+    }
+
     setSimulationData({
       simulation_id: txHash || signedTx.slice(0, 20),
       transaction_id: txHash || signedTx.slice(0, 20),
       status: "completed",
-      path_snapshot: signingPath!,
-      steps: [{
-        step_number: 1, phase: "network", name: "Transaction Broadcast", status: "completed",
-        timestamp_offset_minutes: 0, duration_minutes: 1,
-        details: {
-          network: "Base Sepolia",
-          tx_hash: txHash || signedTx.slice(0, 20) + "...",
-          explorer_url: txHash ? `https://sepolia.basescan.org/tx/${txHash}` : "",
-        },
-      }],
+      path_snapshot: p,
+      steps,
       summary: {
-        total_fee_usd: 0, total_time_minutes: 1,
-        final_amount_local: amount, local_currency: currency,
-        usd_equivalent_received: amount, effective_exchange_rate: 1, value_loss_pct: 0,
+        total_fee_usd: p.summary.total_fee_usd,
+        total_time_minutes: p.summary.total_time_minutes,
+        final_amount_local: p.summary.received_local,
+        local_currency: p.summary.currency,
+        usd_equivalent_received: p.summary.received_local,
+        effective_exchange_rate: p.summary.exchange_rate,
+        value_loss_pct: p.summary.risk_score,
       },
     } as any);
   };
@@ -204,11 +272,11 @@ export default function SendMoneyPage() {
       )}
       {fundingTx && !funding && (
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 text-sm text-green-700 dark:text-green-300 text-center">
-          ✅ Funded: <a href={`https://sepolia.basescan.org/tx/${fundingTx}`} target="_blank" rel="noopener noreferrer" className="underline font-mono text-xs">{fundingTx.slice(0, 16)}...</a>
+          ✅ Funded: <a href={getExplorerUrl(fundingTx)} target="_blank" rel="noopener noreferrer" className="underline font-mono text-xs">{fundingTx.slice(0, 16)}...</a>
         </div>
       )}
 
-      {signingPath && !collectInfo && !funding && (
+      {signingPath && !collectInfo && !funding && !settlingPath && (
         <SigningStep
           pathLabel={signingPath.off_ramp
             ? (signingPath.on_ramp
@@ -219,6 +287,15 @@ export default function SendMoneyPage() {
           token={currency}
           onSigned={handleSigned}
           onCancel={handleCancelSign}
+        />
+      )}
+
+      {/* Off-ramp settlement */}
+      {settlingPath && signingPath?.off_ramp && (
+        <SettlementStep
+          amount={amount}
+          offRamp={signingPath.off_ramp}
+          onComplete={handleSettled}
         />
       )}
 

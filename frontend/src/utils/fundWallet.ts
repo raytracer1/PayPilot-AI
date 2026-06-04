@@ -1,6 +1,6 @@
 import { privateKeyToAccount } from "viem/accounts";
-import { encodeFunctionData, parseUnits, parseEther, createPublicClient, http } from "viem";
-import { baseSepolia } from "viem/chains";
+import { encodeFunctionData, parseUnits, parseEther, createPublicClient } from "viem";
+import { getChain, getTransport, getExplorerUrl } from "./chainConfig";
 
 const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const ERC20_ABI = [{
@@ -20,7 +20,8 @@ export async function fundUserWallet(
 
   try {
     const account = privateKeyToAccount(devKey.startsWith("0x") ? devKey as `0x${string}` : `0x${devKey}` as `0x${string}`);
-    const client = createPublicClient({ chain: baseSepolia, transport: http() });
+    const chain = getChain();
+    const client = createPublicClient({ chain, transport: getTransport() });
 
     const recipient = userAddress as `0x${string}`;
 
@@ -31,7 +32,7 @@ export async function fundUserWallet(
       value: parseEther("0.0001"),
       gas: 21000n,
       gasPrice: 1000000000n,
-      chainId: 84532,
+      chainId: chain.id,
       nonce,
     });
     const ethTxHash = await client.sendRawTransaction({ serializedTransaction: ethTxSigned });
@@ -50,7 +51,7 @@ export async function fundUserWallet(
       value: 0n,
       gas: 100000n,
       gasPrice: 1000000000n,
-      chainId: 84532,
+      chainId: chain.id,
       nonce,
     });
 
@@ -58,7 +59,7 @@ export async function fundUserWallet(
     return {
       txHash,
       ethTxHash,
-      explorerUrl: `https://sepolia.basescan.org/tx/${txHash}`,
+      explorerUrl: getExplorerUrl(txHash),
     };
   } catch (err: any) {
     return { error: err.message || "Funding failed" };

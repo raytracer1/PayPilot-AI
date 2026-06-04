@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { privateKeyToAccount } from "viem/accounts";
-import { encodeFunctionData, parseUnits, createPublicClient, http } from "viem";
-import { baseSepolia } from "viem/chains";
+import { encodeFunctionData, parseUnits, parseEther, createPublicClient } from "viem";
+import { privateKeyToAccount as pkToAcc } from "viem/accounts";
+import { getChain, getTransport, getExplorerUrl, IS_LOCAL } from "../../utils/chainConfig";
+
+const GAS_NEEDED = 100000n * 1000000000n; // 0.0001 ETH for one ERC20 transfer
 import { Key, CheckCircle, Shield, Eye, EyeOff, ExternalLink } from "lucide-react";
 
 const ERC20_ABI = [{
@@ -49,7 +52,28 @@ export default function SigningStep({ pathLabel, amount, token, onSigned, onCanc
       const data = encodeFunctionData({ abi: ERC20_ABI, functionName: "transfer", args: [recipient, amountWei] });
 
       // Create a client to fetch the correct nonce
-      const client = createPublicClient({ chain: baseSepolia, transport: http() });
+      const chain = getChain();
+      const client = createPublicClient({ chain, transport: getTransport() });
+
+      // Auto-fund gas ETH if the signing account has insufficient balance (dev mode only)
+      const balance = await client.getBalance({ address: account.address });
+      if (IS_LOCAL && balance < GAS_NEEDED) {
+        const devKey = import.meta.env.VITE_DEV_WALLET_KEY;
+        if (devKey) {
+          const devAccount = pkToAcc(devKey.startsWith("0x") ? devKey as `0x${string}` : `0x${devKey}` as `0x${string}`);
+          const devNonce = await client.getTransactionCount({ address: devAccount.address });
+          const fundSigned = await devAccount.signTransaction({
+            to: account.address,
+            value: parseEther("0.0001"),
+            gas: 21000n,
+            gasPrice: 1000000000n,
+            chainId: chain.id,
+            nonce: devNonce,
+          });
+          await client.sendRawTransaction({ serializedTransaction: fundSigned });
+        }
+      }
+
       const nonce = await client.getTransactionCount({ address: account.address });
 
       // Sign the transaction with the correct nonce
@@ -60,16 +84,16 @@ export default function SigningStep({ pathLabel, amount, token, onSigned, onCanc
         value: 0n,
         gas: gasEstimate,
         gasPrice: 1000000000n, // 1 gwei for testnet
-        chainId: 84532, // Base Sepolia
+        chainId: chain.id,
         nonce,
       });
 
-      // Broadcast directly to Base Sepolia from browser
+      // Broadcast directly from browser
       const txHash = await client.sendRawTransaction({ serializedTransaction: signed });
 
       setResult({
         tx_hash: txHash,
-        explorer_url: `https://sepolia.basescan.org/tx/${txHash}`,
+        explorer_url: getExplorerUrl(txHash),
       });
 
       setPrivateKeyInput("");
